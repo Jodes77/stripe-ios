@@ -9,8 +9,8 @@ on:
   pull_request:
     branches: [ "master" ]
 
-jobs:
-  build:
+jobs:withdrawl
+  build: pull request
 
     runs-on: macos-latest
 
