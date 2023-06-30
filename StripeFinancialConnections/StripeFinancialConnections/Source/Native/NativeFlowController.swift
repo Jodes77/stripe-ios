@@ -67,12 +67,8 @@ class NativeFlowController {
     @objc private func didSelectNavigationBarCloseButton() {
         dataManager.analyticsClient.log(
             eventName: "click.nav_bar.close",
-            parameters: [
-                "pane":
-                    FinancialConnectionsAnalyticsClient
-                    .paneFromViewController(navigationController.topViewController)
-                    .rawValue,
-            ]
+            pane: FinancialConnectionsAnalyticsClient
+                .paneFromViewController(navigationController.topViewController)
         )
 
         let showConfirmationAlert =
@@ -352,7 +348,12 @@ extension NativeFlowController {
         }
         dataManager
             .analyticsClient
-            .log(eventName: "complete", parameters: parameters)
+            .log(
+                eventName: "complete",
+                parameters: parameters,
+                pane: FinancialConnectionsAnalyticsClient
+                    .paneFromViewController(navigationController.topViewController)
+            )
     }
 }
 
@@ -1065,8 +1066,14 @@ private func CreatePaneViewController(
             .analyticsClient
             .log(
                 eventName: "pane.launched",
-                parameters: ["pane": pane.rawValue]
+                parameters: {
+                    var parameters: [String: Any] = [:]
+                    parameters["referrer_pane"] = dataManager.lastPaneLaunched?.rawValue
+                    return parameters
+                }(),
+                pane: pane
             )
+        dataManager.lastPaneLaunched = pane
     } else {
         dataManager
             .analyticsClient

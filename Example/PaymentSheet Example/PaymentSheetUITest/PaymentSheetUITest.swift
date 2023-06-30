@@ -486,7 +486,6 @@ class PaymentSheetStandardLPMUITests: PaymentSheetUITestCase {
         var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
         settings.customerMode = .new
         settings.apmsEnabled = .off
-        settings.shippingInfo = .onWithDefaults
         loadPlayground(
             app,
             settings
@@ -823,7 +822,7 @@ class PaymentSheetDeferredUITests: PaymentSheetUITestCase {
      XCTAssertTrue(payWithLinkButton.waitForExistence(timeout: 10))
      payWithLinkButton.tap()
      
-     let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+     let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
      XCTAssertTrue(modal.waitForExistence(timeout: 10))
      
      let emailField = modal.textFields["Email"]
@@ -960,7 +959,7 @@ class PaymentSheetDeferredUIBankAccountTests: PaymentSheetUITestCase {
      
      try linkLogin()
      
-     let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+     let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
      let paymentMethodPicker = app.otherElements["Stripe.Link.PaymentMethodPicker"]
      if paymentMethodPicker.waitForExistence(timeout: 10) {
      paymentMethodPicker.tap()
@@ -1212,7 +1211,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
      XCTAssertTrue(payWithLinkButton.waitForExistence(timeout: 10))
      payWithLinkButton.tap()
      
-     let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+     let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
      XCTAssertTrue(modal.waitForExistence(timeout: 10))
      
      let emailField = modal.textFields["Email"]
@@ -1429,7 +1428,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
      
      try linkLogin()
      
-     let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+     let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
      let paymentMethodPicker = app.otherElements["Stripe.Link.PaymentMethodPicker"]
      if paymentMethodPicker.waitForExistence(timeout: 10) {
      paymentMethodPicker.tap()
@@ -1580,7 +1579,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
  XCTAssertTrue(payWithLinkButton.waitForExistence(timeout: 10))
  payWithLinkButton.tap()
  
- let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+ let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
  XCTAssertTrue(modal.waitForExistence(timeout: 10))
  
  let emailField = modal.textFields["Email"]
@@ -1638,7 +1637,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
  codeField.tap()
  app.typeTextWithKeyboard("000000")
  
- let modal2 = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+ let modal2 = app.otherElements["Stripe.Link.PayWithLinkWebController"]
  XCTAssertTrue(modal2.waitForExistence(timeout: 10))
  }
  
@@ -1712,7 +1711,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
  
  try linkLogin()
  
- let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+ let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
  let paymentMethodPicker = app.otherElements["Stripe.Link.PaymentMethodPicker"]
  if paymentMethodPicker.waitForExistence(timeout: 10) {
  paymentMethodPicker.tap()
@@ -1791,7 +1790,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
  
  try linkLogin()
  
- let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+ let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
  let paymentMethodPicker = app.otherElements["Stripe.Link.PaymentMethodPicker"]
  paymentMethodPicker.waitForExistenceAndTap(timeout: 10.0)
  paymentMethodPicker.otherElements["Stripe.Link.PaymentMethodPickerCell"].firstMatch.press(forDuration: 2.0)
@@ -1848,7 +1847,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
  }
  
  private func linkLogin() throws {
- let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+ let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
  XCTAssertTrue(modal.waitForExistence(timeout: 10))
  
  let emailField = modal.textFields["Email"]
@@ -1866,7 +1865,7 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
  private func loginAndPay() throws {
  try linkLogin()
  
- let modal = app.otherElements["Stripe.Link.PayWithLinkViewController"]
+ let modal = app.otherElements["Stripe.Link.PayWithLinkWebController"]
  let paymentMethodPicker = app.otherElements["Stripe.Link.PaymentMethodPicker"]
  if paymentMethodPicker.waitForExistence(timeout: 10) {
  paymentMethodPicker.tap()

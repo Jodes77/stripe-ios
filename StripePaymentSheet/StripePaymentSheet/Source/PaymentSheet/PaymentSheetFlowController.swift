@@ -189,7 +189,7 @@ extension PaymentSheet {
             configuration: PaymentSheet.Configuration,
             completion: @escaping (Result<PaymentSheet.FlowController, Error>) -> Void
         ) {
-            PaymentSheet.load(
+            PaymentSheetLoader.load(
                 mode: mode,
                 configuration: configuration
             ) { result in
@@ -254,22 +254,7 @@ extension PaymentSheet {
                 self.isPresented = true
             }
 
-            if let linkAccount = LinkAccountContext.shared.account,
-               linkAccount.sessionState == .requiresVerification,
-               !linkAccount.hasStartedSMSVerification {
-                let verificationController = LinkVerificationController(linkAccount: linkAccount)
-                verificationController.present(from: presentingViewController) { [weak self] result in
-                    switch result {
-                    case .completed:
-                        self?.viewController.selectLink()
-                        completion?()
-                    case .canceled, .failed:
-                        showPaymentOptions()
-                    }
-                }
-            } else {
-                showPaymentOptions()
-            }
+            showPaymentOptions()
         }
 
         /// Completes the payment or setup.
@@ -319,6 +304,7 @@ extension PaymentSheet {
                     result: result,
                     linkEnabled: intent.supportsLink,
                     activeLinkSession: LinkAccountContext.shared.account?.sessionState == .verified,
+                    linkSessionType: intent.linkPopupWebviewOption,
                     currency: intent.currency,
                     intentConfig: intent.intentConfig
                 )
@@ -346,7 +332,7 @@ extension PaymentSheet {
             latestUpdateContext = UpdateContext(id: updateID)
 
             // 1. Load the intent, payment methods, and link data from the Stripe API
-            PaymentSheet.load(
+            PaymentSheetLoader.load(
                 mode: .deferredIntent(intentConfiguration),
                 configuration: configuration
             ) { [weak self] loadResult in
@@ -444,7 +430,7 @@ extension PaymentSheet {
 @available(iOSApplicationExtension, unavailable)
 @available(macCatalystApplicationExtension, unavailable)
 extension PaymentSheet.FlowController: PaymentSheetFlowControllerViewControllerDelegate {
-    func PaymentSheetFlowControllerViewControllerShouldClose(
+    func paymentSheetFlowControllerViewControllerShouldClose(
         _ PaymentSheetFlowControllerViewController: PaymentSheetFlowControllerViewController
     ) {
         PaymentSheetFlowControllerViewController.dismiss(animated: true) {
@@ -453,7 +439,7 @@ extension PaymentSheet.FlowController: PaymentSheetFlowControllerViewControllerD
         }
     }
 
-    func PaymentSheetFlowControllerViewControllerDidUpdateSelection(
+    func paymentSheetFlowControllerViewControllerDidUpdateSelection(
         _ PaymentSheetFlowControllerViewController: PaymentSheetFlowControllerViewController
     ) {
         // no-op

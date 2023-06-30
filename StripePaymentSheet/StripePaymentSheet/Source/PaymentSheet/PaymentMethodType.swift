@@ -13,7 +13,7 @@ import Foundation
 import UIKit
 
 extension PaymentSheet {
-    public enum PaymentMethodType: Equatable, Hashable {
+    enum PaymentMethodType: Equatable, Hashable {
 
         func supportsAddingRequirements() -> [PaymentMethodTypeRequirement] {
             switch self {
@@ -249,11 +249,6 @@ extension PaymentSheet {
             intent: Intent,
             supportedPaymentMethods: [STPPaymentMethodType] = PaymentSheet.supportedPaymentMethods
         ) -> PaymentMethodAvailabilityStatus {
-            if paymentMethod == .USBankAccount, case .deferredIntent = intent, !PaymentSheet.enableACHV2InDeferredFlow {
-                // TODO(DeferredIntent): Remove this code when https://jira.corp.stripe.com/browse/BANKCON-6731 is complete
-                return .notSupported
-            }
-
             guard let stpPaymentMethodType = paymentMethod.stpPaymentMethodType else {
                 // if the payment method cannot be represented as a `STPPaymentMethodType` attempt to read it
                 // as a dynamic payment method
@@ -306,7 +301,7 @@ extension PaymentSheet {
                     case .blik, .card, .cardPresent, .UPI, .weChatPay:
                         return []
                     case .alipay, .EPS, .FPX, .giropay, .grabPay, .netBanking, .payPal, .przelewy24, .klarna,
-                        .linkInstantDebit, .bancontact, .iDEAL, .cashApp:
+                            .linkInstantDebit, .bancontact, .iDEAL, .cashApp, .affirm:
                         return [.returnURL]
                     case .USBankAccount:
                         return [
@@ -317,7 +312,7 @@ extension PaymentSheet {
                         return [.userSupportsDelayedPaymentMethods]
                     case .bacsDebit, .sofort:
                         return [.returnURL, .userSupportsDelayedPaymentMethods]
-                    case .afterpayClearpay, .affirm:
+                    case .afterpayClearpay:
                         return [.returnURL, .shippingAddress]
                     case .link, .unknown:
                         return [.unsupported]

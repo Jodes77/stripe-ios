@@ -1,3 +1,22 @@
+## X.Y.Z 2023-XX-YY
+### PaymentSheet
+* [Added] US bank accounts are now supported when initializing with an IntentConfiguration (in private beta).
+
+## 23.9.3 2023-06-26
+### PaymentSheet
+* [Fixed] Affirm no longer requires shipping details.
+
+### CustomerSheet
+* [Added] Added `billingDetailsCollectionConfiguration` to configure how you want to collect billing details (private beta).
+
+## 23.9.2 2023-06-20
+### Payments
+* [Fixed] Fixed a bug causing Cash App Pay SetupIntents to incorrectly state they were canceled when they succeeded.
+
+### AddressElement
+* [Fixed] A bug that was causing `addressViewControllerDidFinish` to return a non-nil `AddressDetails` when the user cancels out of the AddressElement when default values are provided.
+* [Fixed] A bug that prevented the auto complete view from being presented when the AddressElement was created with default values.
+
 ## 23.9.1 2023-06-12
 ### PaymentSheet
 * [Fixed] Fixed validating the IntentConfiguration matches the PaymentIntent/SetupIntent when it was already confirmed on the server. Note: server-side confirmation is in private beta.
