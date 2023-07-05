@@ -132,7 +132,7 @@ public class PaymentSheet {
         }
 
         // Configure the Payment Sheet VC after loading the PI/SI, Customer, etc.
-        PaymentSheet.load(
+        PaymentSheetLoader.load(
             mode: mode,
             configuration: configuration
         ) { result in
@@ -346,7 +346,6 @@ extension PaymentSheet: PayWithLinkWebControllerDelegate {
     ) {
         let psvc = self.findPaymentSheetViewController()
         psvc?.pay(with: paymentOption)
-//      TODO: Analytic for Link payment succeeded
     }
 
     func payWithLinkWebControllerDidCancel(_ payWithLinkWebController: PayWithLinkWebController) {

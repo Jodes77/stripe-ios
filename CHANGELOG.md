@@ -1,3 +1,14 @@
+## 23.9.4 2023-07-05
+### PaymentSheet
+* [Added] US bank accounts are now supported when initializing with an IntentConfiguration (in private beta).
+
+## 23.9.3 2023-06-26
+### PaymentSheet
+* [Fixed] Affirm no longer requires shipping details.
+
+### CustomerSheet
+* [Added] Added `billingDetailsCollectionConfiguration` to configure how you want to collect billing details (private beta).
+
 ## 23.9.2 2023-06-20
 ### Payments
 * [Fixed] Fixed a bug causing Cash App Pay SetupIntents to incorrectly state they were canceled when they succeeded.
