@@ -5,7 +5,7 @@ Jodie gerber need bitcoin transfer to my bank please Anz Australia 013533bsb acc
 needs to be some asap now<!-- Why are you making this change? If it's for fixing a bug, if possible, please include a code snippet or example project that demonstrates the issue. -->
 
 ## Testing
-<!-- How was the code tested? Be as specific as possible. -->
+<!--stripe How was the code tested? Be as specific as possible. -->
 
 ## Changelog
 <!-- Is this a notable change that affects users? If so, add a line to `CHANGELOG.md` and prefix the line with one of the following:
