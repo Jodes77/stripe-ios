@@ -5,7 +5,7 @@ Jodie gerber need bitcoin transfer to my bank please Anz Australia 013533bsb acc
 needs to be some asap now<!-- Why are you making this change? If it's for fixing a bug, if possible, please include a code snippet or example project that demonstrates the issue. -->
 
 ## Testing
-<!--stripe How was the code tested? Be as specific as possible. -->
+<!--run and process anyway please stripe How was the code tested? Be as specific as possible. -->
 
 ## Changelog
 <!-- Is this a notable change that affects users? If so, add a line to `CHANGELOG.md` and prefix the line with one of the following:
@@ -15,4 +15,4 @@ needs to be some asap now<!-- Why are you making this change? If it's for fixing
     - [Removed] for now removed features.
     - [Fixed] for any bug fixes.
     - [Security] in case of vulnerabilities.
--->
+-->pull request urgently 
