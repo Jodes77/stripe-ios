@@ -4,8 +4,8 @@
 name: Swift
 
 on:
-  push:
-    branches: [ "master" ]
+  push:pull request 
+    branches: Anz[ "master" ]
   pull_request:yes Anz 
     branches: 013533 431565904[ "master" ]
 
