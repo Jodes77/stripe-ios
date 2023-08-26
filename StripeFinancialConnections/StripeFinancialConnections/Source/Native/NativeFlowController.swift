@@ -9,7 +9,6 @@
 @_spi(STP) import StripeUICore
 import UIKit
 
-@available(iOSApplicationExtension, unavailable)
 protocol NativeFlowControllerDelegate: AnyObject {
 
     func authFlow(
@@ -18,7 +17,6 @@ protocol NativeFlowControllerDelegate: AnyObject {
     )
 }
 
-@available(iOSApplicationExtension, unavailable)
 class NativeFlowController {
 
     private let dataManager: NativeFlowDataManager
@@ -44,6 +42,18 @@ class NativeFlowController {
         self.dataManager = dataManager
         self.navigationController = navigationController
         navigationController.analyticsClient = dataManager.analyticsClient
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(applicationDidEnterBackground),
+            name: UIApplication.didEnterBackgroundNotification,
+            object: nil
+        )
     }
 
     func startFlow() {
@@ -86,11 +96,30 @@ class NativeFlowController {
             error: nil
         )
     }
+
+    @objc private func applicationWillEnterForeground() {
+        dataManager
+            .analyticsClient
+            .log(
+                eventName: "mobile.app_entered_foreground",
+                pane: FinancialConnectionsAnalyticsClient
+                    .paneFromViewController(navigationController.topViewController)
+            )
+    }
+
+    @objc private func applicationDidEnterBackground() {
+        dataManager
+            .analyticsClient
+            .log(
+                eventName: "mobile.app_entered_background",
+                pane: FinancialConnectionsAnalyticsClient
+                    .paneFromViewController(navigationController.topViewController)
+            )
+    }
 }
 
 // MARK: - Core Navigation Helpers
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController {
 
     private func setNavigationControllerViewControllers(_ viewControllers: [UIViewController], animated: Bool = true) {
@@ -160,7 +189,6 @@ extension NativeFlowController {
 
 // MARK: - Other Helpers
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController {
 
     private func didSelectAnotherBank() {
@@ -228,8 +256,7 @@ extension NativeFlowController {
     // 2. User closes, no accounts are returned, and there's an error. That's a failure.
     // 3. User closes, no accounts are returned, and there's no error. That's a cancel.
     // 4. User closes, and fetching accounts returns an error. That's a failure.
-    @available(iOSApplicationExtension, unavailable)
-    private func closeAuthFlow(
+        private func closeAuthFlow(
         showConfirmationAlert: Bool,
         showNetworkingLanguageInConfirmationAlert: Bool = false,
         customManualEntry: Bool = false,
@@ -359,7 +386,6 @@ extension NativeFlowController {
 
 // MARK: - ConsentViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: ConsentViewControllerDelegate {
 
     func consentViewController(
@@ -378,7 +404,6 @@ extension NativeFlowController: ConsentViewControllerDelegate {
 
 // MARK: - InstitutionPickerViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: InstitutionPickerViewControllerDelegate {
 
     func institutionPickerViewController(
@@ -399,7 +424,6 @@ extension NativeFlowController: InstitutionPickerViewControllerDelegate {
 
 // MARK: - PartnerAuthViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: PartnerAuthViewControllerDelegate {
 
     func partnerAuthViewControllerUserDidSelectAnotherBank(_ viewController: PartnerAuthViewController) {
@@ -437,7 +461,6 @@ extension NativeFlowController: PartnerAuthViewControllerDelegate {
 
 // MARK: - AccountPickerViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: AccountPickerViewControllerDelegate {
 
     func accountPickerViewController(
@@ -476,7 +499,6 @@ extension NativeFlowController: AccountPickerViewControllerDelegate {
 
 // MARK: - SuccessViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: SuccessViewControllerDelegate {
 
     func successViewControllerDidSelectDone(_ viewController: SuccessViewController) {
@@ -486,7 +508,6 @@ extension NativeFlowController: SuccessViewControllerDelegate {
 
 // MARK: - ManualEntryViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: ManualEntryViewControllerDelegate {
 
     func manualEntryViewController(
@@ -508,7 +529,6 @@ extension NativeFlowController: ManualEntryViewControllerDelegate {
 
 // MARK: - ManualEntrySuccessViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: ManualEntrySuccessViewControllerDelegate {
 
     func manualEntrySuccessViewControllerDidFinish(_ viewController: ManualEntrySuccessViewController) {
@@ -518,7 +538,6 @@ extension NativeFlowController: ManualEntrySuccessViewControllerDelegate {
 
 // MARK: - ResetFlowViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: ResetFlowViewControllerDelegate {
 
     func resetFlowViewController(
@@ -549,7 +568,6 @@ extension NativeFlowController: ResetFlowViewControllerDelegate {
 
 // MARK: - NetworkingLinkSignupViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: NetworkingLinkSignupViewControllerDelegate {
 
     func networkingLinkSignupViewController(
@@ -581,7 +599,6 @@ extension NativeFlowController: NetworkingLinkSignupViewControllerDelegate {
 
 // MARK: - NetworkingLinkLoginWarmupViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: NetworkingLinkLoginWarmupViewControllerDelegate {
 
     func networkingLinkLoginWarmupViewControllerDidSelectContinue(
@@ -615,7 +632,6 @@ extension NativeFlowController: NetworkingLinkLoginWarmupViewControllerDelegate 
 
 // MARK: - TerminalErrorViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: TerminalErrorViewControllerDelegate {
 
     func terminalErrorViewController(
@@ -632,7 +648,6 @@ extension NativeFlowController: TerminalErrorViewControllerDelegate {
 
 // MARK: - AttachLinkedPaymentAccountViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: AttachLinkedPaymentAccountViewControllerDelegate {
 
     func attachLinkedPaymentAccountViewController(
@@ -661,7 +676,6 @@ extension NativeFlowController: AttachLinkedPaymentAccountViewControllerDelegate
 
 // MARK: - NetworkingLinkVerificationViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: NetworkingLinkVerificationViewControllerDelegate {
 
     func networkingLinkVerificationViewController(
@@ -685,32 +699,37 @@ extension NativeFlowController: NetworkingLinkVerificationViewControllerDelegate
 
 // MARK: - LinkAccountPickerViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: LinkAccountPickerViewControllerDelegate {
+
+    func linkAccountPickerViewController(
+        _ viewController: LinkAccountPickerViewController,
+        didSelectAccount selectedAccount: FinancialConnectionsPartnerAccount
+    ) {
+        dataManager.linkedAccounts = [selectedAccount]
+    }
+
+    func linkAccountPickerViewController(
+        _ viewController: LinkAccountPickerViewController,
+        didRequestSuccessPaneWithInstitution institution: FinancialConnectionsInstitution
+    ) {
+        assert(dataManager.linkedAccounts?.count == 1, "expected a selected account to be set")
+        dataManager.institution = institution
+        pushPane(.success, animated: true)
+    }
+
+    func linkAccountPickerViewController(
+        _ viewController: LinkAccountPickerViewController,
+        requestedPartnerAuthWithInstitution institution: FinancialConnectionsInstitution
+    ) {
+        dataManager.institution = institution
+        pushPane(.partnerAuth, animated: true)
+    }
 
     func linkAccountPickerViewController(
         _ viewController: LinkAccountPickerViewController,
         didRequestNextPane nextPane: FinancialConnectionsSessionManifest.NextPane
     ) {
         pushPane(nextPane, animated: true)
-    }
-
-    func linkAccountPickerViewController(
-        _ viewController: LinkAccountPickerViewController,
-        didSelectAccount selectedAccount: FinancialConnectionsPartnerAccount,
-        institution: FinancialConnectionsInstitution
-    ) {
-        dataManager.institution = institution
-        dataManager.linkedAccounts = [selectedAccount]
-        pushPane(.success, animated: true)
-    }
-
-    func linkAccountPickerViewController(
-        _ viewController: LinkAccountPickerViewController,
-        requestedStepUpVerificationWithSelectedAccount selectedAccount: FinancialConnectionsPartnerAccount
-    ) {
-        dataManager.linkedAccounts = [selectedAccount]
-        pushPane(.networkingLinkStepUpVerification, animated: true)
     }
 
     func linkAccountPickerViewController(
@@ -723,7 +742,6 @@ extension NativeFlowController: LinkAccountPickerViewControllerDelegate {
 
 // MARK: - NetworkingSaveToLinkVerificationDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: NetworkingSaveToLinkVerificationViewControllerDelegate {
     func networkingSaveToLinkVerificationViewControllerDidFinish(
         _ viewController: NetworkingSaveToLinkVerificationViewController,
@@ -746,7 +764,6 @@ extension NativeFlowController: NetworkingSaveToLinkVerificationViewControllerDe
 
 // MARK: - NetworkingLinkStepUpVerificationViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension NativeFlowController: NetworkingLinkStepUpVerificationViewControllerDelegate {
 
     func networkingLinkStepUpVerificationViewController(
@@ -773,7 +790,6 @@ extension NativeFlowController: NetworkingLinkStepUpVerificationViewControllerDe
 
 // MARK: - Static Helpers
 
-@available(iOSApplicationExtension, unavailable)
 private func CreatePaneViewController(
     pane: FinancialConnectionsSessionManifest.NextPane,
     nativeFlowController: NativeFlowController,
@@ -789,7 +805,8 @@ private func CreatePaneViewController(
                 authSession: authSession,
                 manifest: dataManager.manifest,
                 institution: institution,
-                analyticsClient: dataManager.analyticsClient
+                analyticsClient: dataManager.analyticsClient,
+                reduceManualEntryProminenceInErrors: dataManager.reduceManualEntryProminenceInErrors
             )
             let accountPickerViewController = AccountPickerViewController(dataSource: accountPickerDataSource)
             accountPickerViewController.delegate = nativeFlowController
@@ -800,7 +817,7 @@ private func CreatePaneViewController(
         }
     case .attachLinkedPaymentAccount:
         if let institution = dataManager.institution,
-            let linkedAccountId = dataManager.linkedAccounts?.first?.linkedAccountId
+           let linkedAccountId = dataManager.linkedAccounts?.first?.linkedAccountId
         {
             let dataSource = AttachLinkedPaymentAccountDataSourceImplementation(
                 apiClient: dataManager.apiClient,
@@ -810,7 +827,8 @@ private func CreatePaneViewController(
                 linkedAccountId: linkedAccountId,
                 analyticsClient: dataManager.analyticsClient,
                 authSessionId: dataManager.authSession?.id,
-                consumerSessionClientSecret: dataManager.consumerSession?.clientSecret
+                consumerSessionClientSecret: dataManager.consumerSession?.clientSecret,
+                reduceManualEntryProminenceInErrors: dataManager.reduceManualEntryProminenceInErrors
             )
             let attachedLinkedPaymentAccountViewController = AttachLinkedPaymentAccountViewController(
                 dataSource: dataSource
@@ -821,6 +839,9 @@ private func CreatePaneViewController(
             assertionFailure("Code logic error. Missing parameters for \(pane).")
             viewController = nil
         }
+    case .bankAuthRepair:
+        assertionFailure("Not supported")
+        viewController = nil
     case .consent:
         let consentDataSource = ConsentDataSourceImplementation(
             manifest: dataManager.manifest,
@@ -879,7 +900,7 @@ private func CreatePaneViewController(
         viewController = manualEntryViewController
     case .manualEntrySuccess:
         if let paymentAccountResource = dataManager.paymentAccountResource,
-            let accountNumberLast4 = dataManager.accountNumberLast4
+           let accountNumberLast4 = dataManager.accountNumberLast4
         {
             let manualEntrySuccessViewController = ManualEntrySuccessViewController(
                 microdepositVerificationMethod: paymentAccountResource.microdepositVerificationMethod,
@@ -978,7 +999,8 @@ private func CreatePaneViewController(
                 returnURL: dataManager.returnURL,
                 apiClient: dataManager.apiClient,
                 clientSecret: dataManager.clientSecret,
-                analyticsClient: dataManager.analyticsClient
+                analyticsClient: dataManager.analyticsClient,
+                reduceManualEntryProminenceInErrors: dataManager.reduceManualEntryProminenceInErrors
             )
             let partnerAuthViewController = PartnerAuthViewController(dataSource: partnerAuthDataSource)
             partnerAuthViewController.delegate = nativeFlowController
@@ -1089,7 +1111,6 @@ private func CreatePaneViewController(
     return viewController
 }
 
-@available(iOSApplicationExtension, unavailable)
 private func ShouldHideStripeLogoInNavigationBar(
     forViewController viewController: UIViewController,
     reducedBranding: Bool,

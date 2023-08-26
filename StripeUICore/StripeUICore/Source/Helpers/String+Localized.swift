@@ -261,6 +261,16 @@ import Foundation
         STPLocalizedString("Cancel", "Button title to cancel action in an alert")
     }
 
+    static var closeFormTitle: String {
+        STPLocalizedString("Do you want to close this form?",
+                           "Used as the title for prompting the user if they want to close the sheet")
+    }
+
+    static var paymentInfoWontBeSaved: String {
+        STPLocalizedString("Your payment information will not be saved.",
+                           "Used as the title for prompting the user if they want to close the sheet")
+    }
+
     static var ok: String {
         STPLocalizedString("OK", "ok button")
     }
@@ -292,5 +302,19 @@ import Foundation
 
     static var invalid_upi_id: String {
         STPLocalizedString("Invalid UPI ID", "Error message when UPI ID is invalid")
+    }
+
+    // MARK: - Blik
+
+    static var blik_code: String {
+        STPLocalizedString("BLIK code", "Label for BLIK code number field on form")
+    }
+
+    static var incomplete_blik_code: String {
+        STPLocalizedString("Your BLIK code is incomplete.", "Error message when BLIK code is incomplete")
+    }
+
+    static var invalid_blik_code: String {
+        STPLocalizedString("Your BLIK code is invalid.", "Error message when BLIK code is invalid")
     }
 }

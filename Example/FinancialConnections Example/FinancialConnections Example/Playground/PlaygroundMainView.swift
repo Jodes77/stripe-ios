@@ -56,16 +56,13 @@ struct PlaygroundMainView: View {
                                     .italic()
                             }
 
-                            if viewModel.customPublicKey.isEmpty || viewModel.customSecretKey.isEmpty
-                            {
-                                Toggle("Enable Test Mode", isOn: $viewModel.enableTestMode)
-                                // test mode color
-                                    .toggleStyle(
-                                        SwitchToggleStyle(
-                                            tint: Color(red: 231 / 255.0, green: 151 / 255.0, blue: 104 / 255.0)
-                                        )
+                            Toggle("Enable Test Mode", isOn: $viewModel.enableTestMode)
+                            // test mode color
+                                .toggleStyle(
+                                    SwitchToggleStyle(
+                                        tint: Color(red: 231 / 255.0, green: 151 / 255.0, blue: 104 / 255.0)
                                     )
-                            }
+                                )
 
                             if viewModel.flow == .networking {
                                 TextField("Email (existing Link consumer)", text: $viewModel.email)
@@ -80,6 +77,9 @@ struct PlaygroundMainView: View {
                     }
 
                     Section(header: Text("PERMISSIONS")) {
+                        Toggle("Balances", isOn: $viewModel.enableBalancesPermission)
+                            .accessibility(identifier: "playground-balances-permission")
+
                         Toggle("Transactions \(viewModel.flow == .networking ? "(enable step-up verification)" : "")", isOn: $viewModel.enableTransactionsPermission)
                             .accessibility(identifier: "playground-transactions-permission")
                     }

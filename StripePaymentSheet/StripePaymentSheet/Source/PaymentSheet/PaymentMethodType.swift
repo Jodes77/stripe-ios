@@ -19,6 +19,8 @@ extension PaymentSheet {
             switch self {
             case .dynamic("revolut_pay"):
                 return [.returnURL]
+            case .dynamic("amazon_pay"):
+                return [.returnURL]
             case .dynamic("mobilepay"):
                 return [.returnURL]
             case .dynamic("zip"):
@@ -42,6 +44,7 @@ extension PaymentSheet {
         case dynamic(String)
         case UPI
         case cashApp
+
         static var analyticLogForIcon: Set<PaymentMethodType> = []
         static let analyticLogForIconSemaphore = DispatchSemaphore(value: 1)
 
@@ -89,6 +92,8 @@ extension PaymentSheet {
                 return "MobilePay"
             } else if case .dynamic("zip") = self {
                 return "Zip"
+            } else if case .dynamic("amazon_pay") = self {
+                return "Amazon Pay"
             } else if case .dynamic(let name) = self {
                 // TODO: We should introduce a display name in our model rather than presenting the payment method type
                 return name
@@ -97,9 +102,16 @@ extension PaymentSheet {
             return ""
         }
 
-        var paymentSheetLabel: String {
+        /// The identifier for the payment method type as it is represented on an intent
+        var identifier: String {
+            if let stpPaymentMethodType = stpPaymentMethodType {
+                return stpPaymentMethodType.identifier
+            } else if case .dynamic(let name) = self {
+                return name
+            }
+
             assertionFailure()
-            return "Unknown"
+            return ""
         }
 
         static func shouldLogAnalytic(paymentMethod: PaymentSheet.PaymentMethodType) -> Bool {
@@ -278,13 +290,12 @@ extension PaymentSheet {
                         return [.returnURL]
                     case .USBankAccount:
                         return [.userSupportsDelayedPaymentMethods]
-                    case .iDEAL, .bancontact, .sofort:
-                        // SEPA-family PMs are disallowed until we can reuse them for PI+sfu and SI.
+                    case .sofort, .iDEAL, .bancontact:
+                        // n.b. While sofort, iDEAL and bancontact are themselves not delayed, they turn into SEPA upon save, which IS delayed.
+                        return [.returnURL, .userSupportsDelayedPaymentMethods]
                         // n.b. While iDEAL and bancontact are themselves not delayed, they turn into SEPA upon save, which IS delayed.
-                        return [.returnURL, .userSupportsDelayedPaymentMethods, .unsupportedForSetup]
                     case .SEPADebit:
-                        // SEPA-family PMs are disallowed until we can reuse them for PI+sfu and SI.
-                        return [.userSupportsDelayedPaymentMethods, .unsupportedForSetup]
+                        return [.userSupportsDelayedPaymentMethods]
                     case .bacsDebit:
                         return [.returnURL, .userSupportsDelayedPaymentMethods]
                     case .AUBECSDebit, .cardPresent, .blik, .weChatPay, .grabPay, .FPX, .giropay, .przelewy24, .EPS,
@@ -504,7 +515,7 @@ extension STPPaymentMethodParams {
         default:
             if self.type == .unknown, let rawTypeString = rawTypeString {
                 let paymentMethodType = PaymentSheet.PaymentMethodType(from: rawTypeString)
-                return paymentMethodType.paymentSheetLabel
+                return paymentMethodType.displayName
             } else {
                 return label
             }

@@ -4,7 +4,7 @@
 //
 //
 //  ⚠️🏗 This is feature has not been released yet, and is under construction
-//  Note: Do not import Stripe using `@_spi(STP)` or @_spi(PrivateBetaCustomerSheet) in production.
+//  Note: Do not import Stripe using `@_spi(STP)` in production.
 //  Doing so exposes internal functionality which may cause unexpected behavior if used directly.
 //
 import Foundation
@@ -20,21 +20,17 @@ internal enum InternalCustomerSheetResult {
     case failed(error: Error)
 }
 
-@_spi(PrivateBetaCustomerSheet) public class CustomerSheet {
+public class CustomerSheet {
     let configuration: CustomerSheet.Configuration
 
     internal typealias CustomerSheetCompletion = (CustomerSheetResult) -> Void
 
     /// The STPPaymentHandler instance
-    @available(iOSApplicationExtension, unavailable)
-    @available(macCatalystApplicationExtension, unavailable)
     lazy var paymentHandler: STPPaymentHandler = {
         STPPaymentHandler(apiClient: configuration.apiClient, formSpecPaymentHandler: PaymentSheetFormSpecPaymentHandler())
     }()
 
     /// The parent view controller to present
-    @available(iOSApplicationExtension, unavailable)
-    @available(macCatalystApplicationExtension, unavailable)
     lazy var bottomSheetViewController: BottomSheetViewController = {
         let isTestMode = configuration.apiClient.isTestmode
         let vc = BottomSheetViewController(
@@ -64,26 +60,29 @@ internal enum InternalCustomerSheetResult {
     /// Use a StripeCustomerAdapter, or build your own.
     public init(configuration: CustomerSheet.Configuration,
                 customer: CustomerAdapter) {
+        STPAnalyticsClient.sharedClient.addClass(toProductUsageIfNecessary: CustomerSheet.self)
         self.configuration = configuration
         self.customerAdapter = customer
     }
 
     var customerAdapter: CustomerAdapter
 
+    private var csCompletion: CustomerSheetCompletion?
+
     /// The result of the CustomerSheet
     @frozen public enum CustomerSheetResult {
         /// The customer cancelled the sheet. (e.g. by tapping outside it or tapping the "X")
-        case canceled
-        /// The customer selected a payment method.
+        /// The associated value is the original payment method, before the sheet was opened, as long
+        /// that payment method is still available.
+        case canceled(PaymentOptionSelection?)
+
+        /// The customer selected a payment method. The associated value is the selected payment method.
         case selected(PaymentOptionSelection?)
+
         /// An error occurred when presenting the sheet
         case error(Error)
     }
 
-    private var csCompletion: CustomerSheetCompletion?
-
-    @available(iOSApplicationExtension, unavailable)
-    @available(macCatalystApplicationExtension, unavailable)
     public func present(from presentingViewController: UIViewController,
                         completion csCompletion: @escaping (CustomerSheetResult) -> Void
     ) {
@@ -112,8 +111,11 @@ internal enum InternalCustomerSheetResult {
         }
         loadPaymentMethodInfo { result in
             switch result {
-            case .success((let savedPaymentMethods, let selectedPaymentMethodOption)):
-                self.present(from: presentingViewController, savedPaymentMethods: savedPaymentMethods, selectedPaymentMethodOption: selectedPaymentMethodOption)
+            case .success((let savedPaymentMethods, let selectedPaymentMethodOption, let merchantSupportedPaymentMethodTypes)):
+                self.present(from: presentingViewController,
+                             savedPaymentMethods: savedPaymentMethods,
+                             selectedPaymentMethodOption: selectedPaymentMethodOption,
+                             merchantSupportedPaymentMethodTypes: merchantSupportedPaymentMethodTypes)
             case .failure(let error):
                 csCompletion(.error(CustomerSheetError.errorFetchingSavedPaymentMethods(error)))
                 DispatchQueue.main.async {
@@ -125,11 +127,10 @@ internal enum InternalCustomerSheetResult {
                                                       appearance: configuration.appearance)
     }
 
-    @available(iOSApplicationExtension, unavailable)
-    @available(macCatalystApplicationExtension, unavailable)
     func present(from presentingViewController: UIViewController,
                  savedPaymentMethods: [STPPaymentMethod],
-                 selectedPaymentMethodOption: CustomerPaymentOption?) {
+                 selectedPaymentMethodOption: CustomerPaymentOption?,
+                 merchantSupportedPaymentMethodTypes: [STPPaymentMethodType]) {
         let loadSpecsPromise = Promise<Void>()
         AddressSpecProvider.shared.loadAddressSpecs {
             loadSpecsPromise.resolve(with: ())
@@ -140,6 +141,7 @@ internal enum InternalCustomerSheetResult {
                 let isApplePayEnabled = StripeAPI.deviceSupportsApplePay() && self.configuration.applePayEnabled
                 let savedPaymentSheetVC = CustomerSavedPaymentMethodsViewController(savedPaymentMethods: savedPaymentMethods,
                                                                                     selectedPaymentMethodOption: selectedPaymentMethodOption,
+                                                                                    merchantSupportedPaymentMethodTypes: merchantSupportedPaymentMethodTypes,
                                                                                     configuration: self.configuration,
                                                                                     customerAdapter: self.customerAdapter,
                                                                                     isApplePayEnabled: isApplePayEnabled,
@@ -151,26 +153,33 @@ internal enum InternalCustomerSheetResult {
     }
     // MARK: - Internal Properties
     var completion: (() -> Void)?
-    var userCompletion: ((CustomerSheetResult) -> Void)?
+    var userCompletion: ((Result<PaymentOptionSelection?, Error>) -> Void)?
 }
 
 extension CustomerSheet {
-    func loadPaymentMethodInfo(completion: @escaping (Result<([STPPaymentMethod], CustomerPaymentOption?), Error>) -> Void) {
+    func loadPaymentMethodInfo(completion: @escaping (Result<([STPPaymentMethod], CustomerPaymentOption?, [STPPaymentMethodType]), Error>) -> Void) {
         Task {
             do {
                 async let paymentMethodsResult = try customerAdapter.fetchPaymentMethods()
                 async let selectedPaymentMethodResult = try self.customerAdapter.fetchSelectedPaymentOption()
-                let (paymentMethods, selectedPaymentMethod) = try await (paymentMethodsResult, selectedPaymentMethodResult)
-                completion(.success((paymentMethods, selectedPaymentMethod)))
+                async let merchantSupportedPaymentMethodTypes = try self.retrieveMerchantSupportedPaymentMethodTypes()
+                let (paymentMethods, selectedPaymentMethod, elementSesssion) = try await (paymentMethodsResult, selectedPaymentMethodResult, merchantSupportedPaymentMethodTypes)
+                completion(.success((paymentMethods, selectedPaymentMethod, elementSesssion)))
             } catch {
                 completion(.failure(error))
             }
         }
     }
+
+    func retrieveMerchantSupportedPaymentMethodTypes() async throws -> [STPPaymentMethodType] {
+        guard customerAdapter.canCreateSetupIntents else {
+            return [.card]
+        }
+        let elementSession = try await configuration.apiClient.retrieveElementsSessionForCustomerSheet()
+        return elementSession.orderedPaymentMethodTypes
+    }
 }
 
-@available(iOSApplicationExtension, unavailable)
-@available(macCatalystApplicationExtension, unavailable)
 extension CustomerSheet: CustomerSavedPaymentMethodsViewControllerDelegate {
     func savedPaymentMethodsViewControllerShouldConfirm(_ intent: Intent?, with paymentOption: PaymentOption, completion: @escaping (InternalCustomerSheetResult) -> Void) {
         guard let intent = intent,
@@ -207,11 +216,15 @@ extension CustomerSheet: LoadingViewControllerDelegate {
     }
 }
 
-@_spi(PrivateBetaCustomerSheet) extension StripeCustomerAdapter {
+@_spi(STP) extension CustomerSheet: STPAnalyticsProtocol {
+    @_spi(STP) public static var stp_analyticsIdentifier = "CustomerSheet"
+}
+
+extension StripeCustomerAdapter {
     /// Returns the selected Payment Option for this customer adapter.
     /// You can use this to obtain the selected payment method without loading the CustomerSheet.
     public func retrievePaymentOptionSelection() async throws -> CustomerSheet.PaymentOptionSelection?
-     {
+    {
         let selectedPaymentOption = try await self.fetchSelectedPaymentOption()
         switch selectedPaymentOption {
         case .applePay:
@@ -221,7 +234,7 @@ extension CustomerSheet: LoadingViewControllerDelegate {
             guard let matchingPaymentMethod = paymentMethods.first(where: { $0.stripeId == paymentMethodId }) else {
                 return nil
             }
-            return CustomerSheet.PaymentOptionSelection.savedPaymentMethod(matchingPaymentMethod)
+            return CustomerSheet.PaymentOptionSelection.paymentMethod(matchingPaymentMethod)
         default:
             return nil
         }

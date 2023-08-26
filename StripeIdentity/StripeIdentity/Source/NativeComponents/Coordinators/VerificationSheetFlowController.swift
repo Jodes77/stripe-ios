@@ -46,6 +46,11 @@ protocol VerificationSheetFlowControllerProtocol: AnyObject {
         missingType: IndividualFormElement.MissingType
     )
 
+    func transitionToSelfieCaptureScreen(
+        staticContentResult: Result<StripeAPI.VerificationPage, Error>,
+        sheetController: VerificationSheetControllerProtocol
+    )
+
     func replaceCurrentScreen(
         with viewController: UIViewController
     )
@@ -60,8 +65,6 @@ protocol VerificationSheetFlowControllerProtocol: AnyObject {
     var analyticsLastScreen: IdentityFlowViewController? { get }
 }
 
-@available(iOSApplicationExtension, unavailable)
-@available(macCatalystApplicationExtension, unavailable)
 @objc(STP_Internal_VerificationSheetFlowController)
 final class VerificationSheetFlowController: NSObject {
 
@@ -86,7 +89,6 @@ final class VerificationSheetFlowController: NSObject {
     }()
 }
 
-@available(iOSApplicationExtension, unavailable)
 extension VerificationSheetFlowController: VerificationSheetFlowControllerProtocol {
     /// Transitions to the next view controller in the flow with a 'push' animation.
     /// - Note: This may replace the navigation stack or push an additional view
@@ -171,6 +173,39 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
         }
     }
 
+    func transitionToSelfieCaptureScreen(
+        staticContentResult: Result<StripeAPI.VerificationPage, Error>,
+        sheetController: VerificationSheetControllerProtocol
+    ) {
+        return sheetController.mlModelLoader.faceModelsFuture.observe(on: .main) {
+            [weak self] result in
+            guard let self = self else { return }
+
+            let staticContent: StripeAPI.VerificationPage
+            do {
+                staticContent = try staticContentResult.get()
+                self.transition(
+                    to: self.makeSelfieCaptureViewController(
+                        faceScannerResult: result,
+                        staticContent: staticContent,
+                        sheetController: sheetController
+                    ),
+                    shouldAnimate: true,
+                    completion: {}
+                )
+            } catch {
+                self.transition(
+                    to: ErrorViewController(
+                        sheetController: sheetController,
+                        error: .error(error)
+                    ),
+                    shouldAnimate: true,
+                    completion: {}
+                )
+            }
+        }
+    }
+
     /// Transitions to the given viewController by replacing the currently displayed view controller
     func replaceCurrentScreen(
         with newViewController: UIViewController
@@ -250,8 +285,11 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
         // been submitted and they can't go back to edit their input.
         let isSuccessState = nextViewController is SuccessViewController
 
+        // If it's biometric consent, it's either the first screen of a doc type verification, or the first doc-fallback screen of phone type verification, don't show go back.
+        let isBiometricConsent = nextViewController is BiometricConsentViewController
+
         // Don't display a back button, so replace the navigation stack
-        if isTransitioningFromLoading || isTransitioningFromDebug || isSuccessState {
+        if isTransitioningFromLoading || isTransitioningFromDebug || isSuccessState || isBiometricConsent {
             navigationController.setViewControllers([nextViewController], animated: shouldAnimate)
         } else {
             navigationController.pushViewController(nextViewController, animated: shouldAnimate)
@@ -328,8 +366,8 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
         let missingRequirements =
             updateDataResponse?.requirements.missing ?? staticContent.requirements.missing
 
-        // Show success screen if submitted
-        if updateDataResponse?.submitted == true {
+        // Show success screen if submitted and closed
+        if updateDataResponse?.submittedAndClosed() == true {
             return completion(
                 SuccessViewController(
                     successContent: staticContent.success,
@@ -366,17 +404,7 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
                 )
             }
         case .selfieCaptureDestination:
-            return sheetController.mlModelLoader.faceModelsFuture.observe(on: .main) {
-                [weak self] result in
-                guard let self = self else { return }
-                completion(
-                    self.makeSelfieCaptureViewController(
-                        faceScannerResult: result,
-                        staticContent: staticContent,
-                        sheetController: sheetController
-                    )
-                )
-            }
+            completion(makeSelfieWarmupViewController(sheetController: sheetController))
         case .individualWelcomeDestination:
             // if missing .name or .dob, then verification type is not document.
             // Transition to IndividualWelcomeViewController.
@@ -391,6 +419,13 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
             // IndividualViewController is the screen after document collection.
             return completion(
                 makeIndividualViewController(
+                    staticContent: staticContent,
+                    sheetController: sheetController
+                )
+            )
+        case .phoneOtpDestination:
+            return completion(
+                makePhoneOtpViewController(
                     staticContent: staticContent,
                     sheetController: sheetController
                 )
@@ -436,6 +471,21 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
         }
     }
 
+    func makeSelfieWarmupViewController(
+        sheetController: VerificationSheetControllerProtocol
+    ) -> UIViewController {
+        do {
+            return try SelfieWarmupViewController(sheetController: sheetController)
+        } catch {
+            return ErrorViewController(
+                sheetController: sheetController,
+                error: .error(
+                    VerificationSheetFlowControllerError.unknown(error)
+                )
+            )
+        }
+    }
+
     func makeIndividualViewController(
         staticContent: StripeAPI.VerificationPage,
         sheetController: VerificationSheetControllerProtocol
@@ -443,6 +493,25 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
         return IndividualViewController(
             individualContent: staticContent.individual,
             missing: staticContent.requirements.missing,
+            sheetController: sheetController
+        )
+    }
+
+    func makePhoneOtpViewController(
+        staticContent: StripeAPI.VerificationPage,
+        sheetController: VerificationSheetControllerProtocol
+    ) -> UIViewController {
+        guard let phoneOtpContent = staticContent.phoneOtp
+        else {
+            return ErrorViewController(
+                sheetController: sheetController,
+                error: .error(
+                    VerificationSheetFlowControllerError.missingPhoneOtpContent
+                )
+            )
+        }
+        return PhoneOtpViewController(
+            phoneOtpContent: phoneOtpContent,
             sheetController: sheetController
         )
     }
@@ -650,7 +719,6 @@ extension VerificationSheetFlowController: VerificationSheetFlowControllerProtoc
 
 // MARK: - IdentityFlowNavigationControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension VerificationSheetFlowController: IdentityFlowNavigationControllerDelegate {
     func identityFlowNavigationControllerDidDismiss(
         _ navigationController: IdentityFlowNavigationController
@@ -667,7 +735,6 @@ extension VerificationSheetFlowController: IdentityFlowNavigationControllerDeleg
 // MARK: - VerificationFlowWebViewControllerDelegate
 
 @available(iOS 14.3, *)
-@available(iOSApplicationExtension, unavailable)
 extension VerificationSheetFlowController: VerificationFlowWebViewControllerDelegate {
     func verificationFlowWebViewController(
         _ viewController: VerificationFlowWebViewController,
@@ -681,8 +748,6 @@ extension VerificationSheetFlowController: VerificationFlowWebViewControllerDele
 
 // MARK: - SFSafariViewControllerDelegate
 
-@available(iOSApplicationExtension, unavailable)
-@available(macCatalystApplicationExtension, unavailable)
 extension VerificationSheetFlowController: SFSafariViewControllerDelegate {
     func safariViewControllerDidFinish(_ controller: SFSafariViewController) {
         delegate?.verificationSheetFlowControllerDidDismissWebView(self)
@@ -707,8 +772,10 @@ extension Set<StripeAPI.VerificationPageFieldType> {
             return .selfieCaptureDestination
         } else if !self.isDisjoint(with: [.name, .dob]) {
             return .individualWelcomeDestination
-        } else if !self.isDisjoint(with: [.idNumber, .address]) {
+        } else if !self.isDisjoint(with: [.idNumber, .address, .phoneNumber]) {
             return .individualDestination
+        } else if self.contains(.phoneOtp) {
+            return .phoneOtpDestination
         } else if self.isEmpty {
             return .confirmationDestination
         } else {

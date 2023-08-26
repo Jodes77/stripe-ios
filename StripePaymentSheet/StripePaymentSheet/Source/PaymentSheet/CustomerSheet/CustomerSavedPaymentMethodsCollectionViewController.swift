@@ -63,22 +63,11 @@ class CustomerSavedPaymentMethodsCollectionViewController: UIViewController {
 
     struct Configuration {
         let showApplePay: Bool
-
-        enum AutoSelectDefaultBehavior {
-            /// will only autoselect default has been stored locally
-            case onlyIfMatched
-            /// will try to use locally stored default, or revert to first available
-            case defaultFirst
-            /// No auto selection
-            case none
-        }
-
-        let autoSelectDefaultBehavior: AutoSelectDefaultBehavior
     }
 
     var hasRemovablePaymentMethods: Bool {
         return (
-            !savedPaymentMethods.isEmpty
+            !savedPaymentMethods.isEmpty || !unsyncedSavedPaymentMethods.isEmpty
         )
     }
 
@@ -88,7 +77,12 @@ class CustomerSavedPaymentMethodsCollectionViewController: UIViewController {
         }
         set {
             collectionView.isRemovingPaymentMethods = newValue
-            collectionView.reloadSections([0])
+            UIView.transition(with: collectionView,
+                              duration: 0.3,
+                              options: .transitionCrossDissolve,
+                              animations: {
+                self.collectionView.reloadData()
+            })
             if !collectionView.isRemovingPaymentMethods {
                 // re-select
                 collectionView.selectItem(
@@ -137,6 +131,16 @@ class CustomerSavedPaymentMethodsCollectionViewController: UIViewController {
     var savedPaymentMethods: [STPPaymentMethod] {
         didSet {
             updateUI(selectedSavedPaymentOption: originalSelectedSavedPaymentMethod)
+        }
+    }
+    var unsyncedSavedPaymentMethods: [STPPaymentMethod] {
+        didSet {
+            if let firstPaymentMethod = self.unsyncedSavedPaymentMethods.first {
+                let paymentOption = CustomerPaymentOption(value: firstPaymentMethod.stripeId)
+                updateUI(selectedSavedPaymentOption: paymentOption)
+            } else {
+                updateUI(selectedSavedPaymentOption: originalSelectedSavedPaymentMethod)
+            }
         }
     }
 
@@ -201,12 +205,17 @@ class CustomerSavedPaymentMethodsCollectionViewController: UIViewController {
         self.customerAdapter = customerAdapter
         self.appearance = appearance
         self.delegate = delegate
+        self.unsyncedSavedPaymentMethods = []
         super.init(nibName: nil, bundle: nil)
         updateUI(selectedSavedPaymentOption: nil)
     }
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
+    }
+    public func didAddSavedPaymentMethod(paymentMethod: STPPaymentMethod) {
+        let unsyncedSavedPaymentMethodsCopy = unsyncedSavedPaymentMethods
+        self.unsyncedSavedPaymentMethods = [paymentMethod] + unsyncedSavedPaymentMethodsCopy
     }
 
     // MARK: - UIViewController
@@ -224,7 +233,13 @@ class CustomerSavedPaymentMethodsCollectionViewController: UIViewController {
             collectionView.topAnchor.constraint(equalTo: view.topAnchor),
             collectionView.bottomAnchor.constraint(equalTo: view.bottomAnchor),
         ])
-        self.updateUI(selectedSavedPaymentOption: self.originalSelectedSavedPaymentMethod)
+
+        // In the add payment flow, selectedViewModelIndex is set, and then
+        // the view is loaded. Checking selectedViewModelIndex is needed to avoid
+        // override selecting the newly added payment method.
+        if selectedViewModelIndex == nil {
+            self.updateUI(selectedSavedPaymentOption: self.originalSelectedSavedPaymentMethod)
+        }
     }
 
     // MARK: - Private methods
@@ -242,17 +257,18 @@ class CustomerSavedPaymentMethodsCollectionViewController: UIViewController {
         let savedPMViewModels = savedPaymentMethods.compactMap { paymentMethod in
             return Selection.saved(paymentMethod: paymentMethod)
         }
+        let unsyncedSavedPMViewModels = self.unsyncedSavedPaymentMethods.compactMap { paymentMethod in
+            return Selection.saved(paymentMethod: paymentMethod)
+        }
 
         self.viewModels =
         [.add]
         + (self.configuration.showApplePay ? [.applePay] : [])
+        + unsyncedSavedPMViewModels
         + savedPMViewModels
 
-        if self.configuration.autoSelectDefaultBehavior != .none {
-            // Select default
-            self.selectedViewModelIndex = self.viewModels.firstIndex(where: { $0 == selectedSavedPaymentOption })
-            ?? (self.configuration.autoSelectDefaultBehavior == .defaultFirst ? 1 : nil)
-        }
+        // Select default
+        self.selectedViewModelIndex = self.viewModels.firstIndex(where: { $0 == selectedSavedPaymentOption })
 
         DispatchQueue.main.async {
             self.collectionView.reloadData()
@@ -379,6 +395,9 @@ extension CustomerSavedPaymentMethodsCollectionViewController: PaymentOptionCell
                 self.savedPaymentMethods.removeAll(where: {
                     $0.stripeId == paymentMethod.stripeId
                 })
+                self.unsyncedSavedPaymentMethods.removeAll(where: {
+                    $0.stripeId == paymentMethod.stripeId
+                })
 
                 if let index = self.selectedViewModelIndex {
                     if indexPath.row == index {
@@ -402,7 +421,7 @@ extension CustomerSavedPaymentMethodsCollectionViewController: PaymentOptionCell
 
         let alertController = UIAlertController(
             title: paymentMethod.removalMessage.title,
-            message: paymentMethod.removalMessage.message,
+            message: self.savedPaymentMethodsConfiguration.removeSavedPaymentMethodMessage ?? paymentMethod.removalMessage.message,
             preferredStyle: .alert
         )
 

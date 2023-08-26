@@ -18,11 +18,11 @@ class STPAddCardViewControllerLocalizationTests: FBSnapshotTestCase {
     override func setUp() {
         super.setUp()
 
-        //                self.recordMode = true
+//                        self.recordMode = true
     }
 
     func performSnapshotTest(forLanguage language: String?, delivery: Bool) {
-        let config = STPFixtures.paymentConfiguration()
+        let config = STPPaymentConfiguration()
         config.companyName = "Test Company"
         config.requiredBillingAddressFields = .full
         config.shippingType = delivery ? .delivery : .shipping
@@ -42,9 +42,9 @@ class STPAddCardViewControllerLocalizationTests: FBSnapshotTestCase {
             addCardVC.addressViewModel.addressFieldTableViewCountryCode = "INVALID"
             STPSnapshotVerifyView(viewToTest, identifier: "delivery")
         } else {
-            /// This method rejects nil or empty country codes to stop strange looking behavior
-            /// when scrolling to the top "unset" position in the picker, so put in
-            /// an invalid country code instead to test seeing the "Country" placeholder
+            // This method rejects nil or empty country codes to stop strange looking behavior
+            // when scrolling to the top "unset" position in the picker, so put in
+            // an invalid country code instead to test seeing the "Country" placeholder
             addCardVC.addressViewModel.addressFieldTableViewCountryCode = "INVALID"
             STPSnapshotVerifyView(viewToTest, identifier: "no_country")
 

@@ -28,6 +28,7 @@ Table of contents
    * [Card scanning](#card-scanning)
    * [Contributing](#contributing)
    * [Migrating](#migrating-from-older-versions)
+   * [Code Stye](#code-style)
    * [Licenses](#licenses)
 
 <!--te-->
@@ -122,7 +123,7 @@ We use [Tuist](https://tuist.io) to generate Xcode projects, and all Xcode relat
 If you want to build from the master branch you need to follow these steps:
 
 - Clone the repository and `cd` into its directory.
-- Install Tuist by running `curl -Ls https://install.tuist.io | bash`
+- Install Tuist by following the instructions at [tuist.io](https://docs.tuist.io/tutorial/get-started/).
 - Run `tuist generate`, optionally pass the `-n` option if you don't want to open Xcode automatically.
 
 You can build any of the generated targets as you normally would.
@@ -148,6 +149,17 @@ We welcome contributions of any kind including new features, bug fixes, and docu
 ## Migrating from older versions
 
 See [MIGRATING.md](https://github.com/stripe/stripe-ios/blob/master/MIGRATING.md)
+
+## Code style
+We use [swiftlint](https://github.com/realm/SwiftLint) to enforce code style.
+
+To install it, run `brew install swiftlint`
+
+To lint your code before pushing you can run `ci_scripts/lint_modified_files.sh`
+
+You can also add this script as a pre-push hook by running `ln -s "$(pwd)/ci_scripts/lint_modified_files.sh" .git/hooks/pre-push && chmod +x .git/hooks/pre-push`
+
+To format modified files automatically, you can use `ci_scripts/format_modified_files.sh` and you can add it as a pre-commit hook using `ln -s "$(pwd)/ci_scripts/format_modified_files.sh" .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit`
 
 ## Licenses
 

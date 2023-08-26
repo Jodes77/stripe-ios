@@ -155,4 +155,27 @@ extension String.Localized {
         )
     }
 
+    // MARK: - Phone
+    static var phoneNumber: String {
+        STPLocalizedString(
+            "Phone Number",
+            "Section title for collection phone number"
+        )
+    }
+
+    // MARK: - Selfie
+    static var selfieWarmupTitle: String {
+        STPLocalizedString(
+            "Get ready to take a selfie",
+            "Title for selfie warmup page"
+        )
+    }
+
+    static var selfieWarmupBody: String {
+        STPLocalizedString(
+            "A few photos will be taken automatically on the next step to verify it's you",
+            "Body for selfie warmup page"
+        )
+    }
+
 }

@@ -10,7 +10,6 @@ import Foundation
 @_spi(STP) import StripeUICore
 import UIKit
 
-@available(iOSApplicationExtension, unavailable)
 protocol InstitutionPickerViewControllerDelegate: AnyObject {
     func institutionPickerViewController(
         _ viewController: InstitutionPickerViewController,
@@ -21,7 +20,6 @@ protocol InstitutionPickerViewControllerDelegate: AnyObject {
     )
 }
 
-@available(iOSApplicationExtension, unavailable)
 class InstitutionPickerViewController: UIViewController {
 
     // MARK: - Properties
@@ -142,17 +140,28 @@ class InstitutionPickerViewController: UIViewController {
 
 // MARK: - Data
 
-@available(iOSApplicationExtension, unavailable)
 extension InstitutionPickerViewController {
 
     private func fetchFeaturedInstitutions(completionHandler: @escaping () -> Void) {
         assertMainQueue()
+        let fetchStartDate = Date()
         dataSource
             .fetchFeaturedInstitutions()
             .observe(on: .main) { [weak self] result in
                 guard let self = self else { return }
                 switch result {
                 case .success(let institutions):
+                    self.dataSource
+                        .analyticsClient
+                        .log(
+                            eventName: "search.feature_institutions_loaded",
+                            parameters: [
+                                "institutions": institutions.map({ $0.id }),
+                                "result_count": institutions.count,
+                                "duration": Date().timeIntervalSince(fetchStartDate).milliseconds,
+                            ],
+                            pane: .institutionPicker
+                        )
                     self.featuredInstitutionGridView.loadInstitutions(institutions)
                     self.dataSource
                         .analyticsClient
@@ -237,7 +246,6 @@ extension InstitutionPickerViewController {
 
 // MARK: - InstitutioNSearchBarDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension InstitutionPickerViewController: InstitutionSearchBarDelegate {
 
     func institutionSearchBar(_ searchBar: InstitutionSearchBar, didChangeText text: String) {
@@ -248,7 +256,6 @@ extension InstitutionPickerViewController: InstitutionSearchBarDelegate {
 
 // MARK: - UIGestureRecognizerDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension InstitutionPickerViewController: UIGestureRecognizerDelegate {
 
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
@@ -259,7 +266,6 @@ extension InstitutionPickerViewController: UIGestureRecognizerDelegate {
 
 // MARK: - FeaturedInstitutionGridViewDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension InstitutionPickerViewController: FeaturedInstitutionGridViewDelegate {
 
     func featuredInstitutionGridView(
@@ -279,7 +285,6 @@ extension InstitutionPickerViewController: FeaturedInstitutionGridViewDelegate {
 
 // MARK: - InstitutionSearchTableViewDelegate
 
-@available(iOSApplicationExtension, unavailable)
 extension InstitutionPickerViewController: InstitutionSearchTableViewDelegate {
 
     func institutionSearchTableView(
@@ -296,14 +301,40 @@ extension InstitutionPickerViewController: InstitutionSearchTableViewDelegate {
         didSelectInstitution(institution)
     }
 
-    func institutionSearchTableViewDidSelectManuallyAddYourAccount(_ tableView: InstitutionSearchTableView) {
+    func institutionSearchTableView(
+        _ tableView: InstitutionSearchTableView,
+        didSelectManuallyAddYourAccountWithInstitutions institutions: [FinancialConnectionsInstitution]
+    ) {
+        dataSource
+            .analyticsClient
+            .log(
+                eventName: "click.manual_entry",
+                parameters: [
+                    "institution_ids": institutions.map({ $0.id }),
+                ],
+                pane: .institutionPicker
+            )
         delegate?.institutionPickerViewControllerDidSelectManuallyAddYourAccount(self)
+    }
+
+    func institutionSearchTableView(
+        _ tableView: InstitutionSearchTableView,
+        didScrollInstitutions institutions: [FinancialConnectionsInstitution]
+    ) {
+        dataSource
+            .analyticsClient
+            .log(
+                eventName: "search.scroll",
+                parameters: [
+                    "institution_ids": institutions.map({ $0.id })
+                ],
+                pane: .institutionPicker
+            )
     }
 }
 
 // MARK: - Constants
 
-@available(iOSApplicationExtension, unavailable)
 extension InstitutionPickerViewController {
     enum Constants {
         static let queryDelay = TimeInterval(0.2)
@@ -312,7 +343,6 @@ extension InstitutionPickerViewController {
 
 // MARK: - Helpers
 
-@available(iOSApplicationExtension, unavailable)
 private func CreateMainView(
     searchBar: UIView?,
     contentContainerView: UIView
@@ -330,7 +360,6 @@ private func CreateMainView(
     return verticalStackView
 }
 
-@available(iOSApplicationExtension, unavailable)
 private func CreateHeaderView(
     searchBar: UIView?
 ) -> UIView {
@@ -354,7 +383,6 @@ private func CreateHeaderView(
     return verticalStackView
 }
 
-@available(iOSApplicationExtension, unavailable)
 private func CreateHeaderTitleLabel() -> UIView {
     let headerTitleLabel = AttributedLabel(
         font: .heading(.large),

@@ -31,7 +31,10 @@ extension STPAnalyticsClient {
         activeLinkSession: Bool,
         linkSessionType: LinkSettings.PopupWebviewOption?,
         currency: String?,
-        intentConfig: PaymentSheet.IntentConfiguration? = nil
+        intentConfig: PaymentSheet.IntentConfiguration? = nil,
+        deferredIntentConfirmationType: DeferredIntentConfirmationType?,
+        paymentMethodTypeAnalyticsValue: String? = nil,
+        error: Error? = nil
     ) {
         var success = false
         switch result {
@@ -55,7 +58,10 @@ extension STPAnalyticsClient {
             activeLinkSession: activeLinkSession,
             linkSessionType: linkSessionType,
             currency: currency,
-            intentConfig: intentConfig
+            intentConfig: intentConfig,
+            error: error,
+            deferredIntentConfirmationType: deferredIntentConfirmationType,
+            paymentMethodTypeAnalyticsValue: paymentMethodTypeAnalyticsValue
         )
     }
 
@@ -86,6 +92,12 @@ extension STPAnalyticsClient {
                              isCustom: isCustom,
                              paymentMethod: paymentMethod),
                              intentConfig: intentConfig)
+    }
+
+    enum DeferredIntentConfirmationType: String {
+        case server = "server"
+        case client = "client"
+        case none = "none"
     }
 
     // MARK: - String builders
@@ -231,6 +243,9 @@ extension STPAnalyticsClient {
         configuration: PaymentSheet.Configuration? = nil,
         currency: String? = nil,
         intentConfig: PaymentSheet.IntentConfiguration? = nil,
+        error: Error? = nil,
+        deferredIntentConfirmationType: DeferredIntentConfirmationType? = nil,
+        paymentMethodTypeAnalyticsValue: String? = nil,
         params: [String: Any] = [:]
     ) {
         var additionalParams = [:] as [String: Any]
@@ -249,6 +264,14 @@ extension STPAnalyticsClient {
         additionalParams["locale"] = Locale.autoupdatingCurrent.identifier
         additionalParams["currency"] = currency
         additionalParams["is_decoupled"] = intentConfig != nil
+        additionalParams["deferred_intent_confirmation_type"] = deferredIntentConfirmationType?.rawValue
+        additionalParams["selected_lpm"] = paymentMethodTypeAnalyticsValue
+        if let error = error as? PaymentSheetError {
+            additionalParams["error_message"] = error.safeLoggingString
+        } else if let error = error as? NSError, let code = STPErrorCode(rawValue: error.code) {
+            // attempt log PII safe server error messages
+            additionalParams["error_message"] = code.description
+        }
 
         for (param, param_value) in params {
             additionalParams[param] = param_value
@@ -335,11 +358,7 @@ extension PaymentSheet.Configuration {
         var payload = [String: Any]()
         payload["allows_delayed_payment_methods"] = allowsDelayedPaymentMethods
         payload["apple_pay_config"] = applePay != nil
-        if #available(iOS 13.0, *) {
-            payload["style"] = style.rawValue
-        } else {
-            payload["style"] = 0 // SheetStyle.automatic.rawValue
-        }
+        payload["style"] = style.rawValue
 
         payload["customer"] = customer != nil
         payload["return_url"] = returnURL != nil

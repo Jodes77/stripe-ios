@@ -37,6 +37,7 @@ enum Image: String, CaseIterable, ImageMaker {
     case pm_type_link = "icon-pm-link"
     case pm_type_upi = "icon-pm-upi"
     case pm_type_cashapp = "icon-pm-cashapp"
+    case pm_type_blik = "icon-pm-blik"
 
     // Icons/symbols
     case icon_checkmark = "icon_checkmark"
@@ -54,6 +55,7 @@ enum Image: String, CaseIterable, ImageMaker {
     case icon_cancel = "icon_cancel"
     case icon_add_bordered = "icon_add_bordered"
     case link_logo = "link_logo"
+    case link_arrow = "link_arrow"
     case icon_link_success = "icon_link_success"
     case icon_link_error = "icon_link_error"
     case link_carousel_logo = "link_carousel_logo"

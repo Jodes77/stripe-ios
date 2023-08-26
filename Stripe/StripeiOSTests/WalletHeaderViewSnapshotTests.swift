@@ -47,7 +47,6 @@ class WalletHeaderViewSnapshotTests: FBSnapshotTestCase {
     }
 
     // Tests UI elements that adapt their color based on the `PaymentSheet.Appearance`
-    @available(iOS 13.0, *)
     func testAdaptiveElements() {
         var darkMode = false
 
@@ -76,7 +75,6 @@ class WalletHeaderViewSnapshotTests: FBSnapshotTestCase {
     }
 
     // Tests UI elements that adapt their color based on the `PaymentSheet.Appearance`
-    @available(iOS 13.0, *)
     func testAdaptiveElementsWithCustomApplePayCta() {
         var darkMode = false
 
@@ -183,6 +181,7 @@ extension WalletHeaderViewSnapshotTests {
     fileprivate struct LinkAccountStub: PaymentSheetLinkAccountInfoProtocol {
         let email: String
         let redactedPhoneNumber: String?
+        let lastPM: LinkPMDisplayDetails?
         let isRegistered: Bool
         let isLoggedIn: Bool
     }
@@ -191,6 +190,7 @@ extension WalletHeaderViewSnapshotTests {
         return LinkAccountStub(
             email: "customer@example.com",
             redactedPhoneNumber: "+1********55",
+            lastPM: nil,
             isRegistered: true,
             isLoggedIn: true
         )

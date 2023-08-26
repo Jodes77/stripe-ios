@@ -330,6 +330,78 @@ class PaymentSheetStandardUITests: PaymentSheetUITestCase {
         XCTAssertTrue(webviewCloseButton.waitForExistence(timeout: 10.0))
         webviewCloseButton.tap()
     }
+
+    func testUPIPaymentMethodPolling() throws {
+        var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.customerMode = .new
+                settings.merchantCountryCode = .IN
+        settings.currency = .inr
+        loadPlayground(
+            app,
+            settings
+        )
+
+        app.buttons["Present PaymentSheet"].tap()
+
+        let payButton = app.buttons["Pay ₹50.99"]
+        guard let upi = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "UPI") else {
+            XCTFail()
+            return
+        }
+        upi.tap()
+
+        XCTAssertFalse(payButton.isEnabled)
+        let upi_id = app.textFields["UPI ID"]
+        upi_id.tap()
+        upi_id.typeText("payment.pending@stripeupi")
+        upi_id.typeText(XCUIKeyboardKey.return.rawValue)
+
+        payButton.tap()
+
+        let approvePaymentText = app.staticTexts["Approve payment"]
+        XCTAssertTrue(approvePaymentText.waitForExistence(timeout: 10.0))
+
+        // UPI Specific CTA
+        let predicate = NSPredicate(format: "label BEGINSWITH 'Open your UPI app to approve your payment within'")
+        let upiCTAText = XCUIApplication().staticTexts.element(matching: predicate)
+        XCTAssertTrue(upiCTAText.waitForExistence(timeout: 10.0))
+    }
+
+    func testBLIKPaymentMethodPolling() throws {
+        var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.customerMode = .new
+                settings.merchantCountryCode = .FR
+        settings.currency = .pln
+        loadPlayground(
+            app,
+            settings
+        )
+
+        app.buttons["Present PaymentSheet"].tap()
+
+        let payButton = app.buttons["Pay PLN 50.99"]
+        guard let blik = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "BLIK") else {
+            XCTFail()
+            return
+        }
+        blik.tap()
+
+        XCTAssertFalse(payButton.isEnabled)
+        let blik_code = app.textFields["BLIK code"]
+        blik_code.tap()
+        blik_code.typeText("123456")
+        blik_code.typeText(XCUIKeyboardKey.return.rawValue)
+
+        payButton.tap()
+
+        let approvePaymentText = app.staticTexts["Approve payment"]
+        XCTAssertTrue(approvePaymentText.waitForExistence(timeout: 15.0))
+
+        // BLIK Specific CTA
+        let predicate = NSPredicate(format: "label BEGINSWITH 'Confirm the payment in your bank\\'s app within'")
+        let blikCTAText = XCUIApplication().staticTexts.element(matching: predicate)
+        XCTAssertTrue(blikCTAText.waitForExistence(timeout: 10.0))
+    }
 }
 
 class PaymentSheetStandardLPMUITests: PaymentSheetUITestCase {
@@ -504,7 +576,30 @@ class PaymentSheetStandardLPMUITests: PaymentSheetUITestCase {
 
         // Attempt payment, should fail
         payButton.tap()
+    }
 
+    func testAmazonPayPaymentMethod() throws {
+        var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.customerMode = .new
+        settings.apmsEnabled = .off
+        loadPlayground(
+            app,
+            settings
+        )
+        app.buttons["Present PaymentSheet"].tap()
+        let payButton = app.buttons["Pay $50.99"]
+
+        // Select Amazon Pay
+        guard let amazonPay = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "Amazon Pay") else {
+            XCTFail()
+            return
+        }
+        amazonPay.tap()
+
+        XCTAssertTrue(payButton.isEnabled)
+
+        // Attempt payment, should succeed
+        payButton.tap()
     }
 
     func testZipPaymentMethod() throws {
@@ -521,7 +616,7 @@ class PaymentSheetStandardLPMUITests: PaymentSheetUITestCase {
         app.buttons["Present PaymentSheet"].tap()
         let payButton = app.buttons["Pay A$50.99"]
 
-        // Select Cash App
+        // Select Zip
         guard let zip = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "Zip")
         else {
             XCTFail()
@@ -627,6 +722,37 @@ class PaymentSheetStandardLPMUITests: PaymentSheetUITestCase {
         // no pay button tap because linked account is stubbed/fake in UI test
     }
 
+    func testGrabPayPaymentMethod() throws {
+        var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.customerMode = .new // new customer
+        settings.apmsEnabled = .on
+        settings.currency = .sgd
+        settings.merchantCountryCode = .SG
+        loadPlayground(
+            app,
+            settings
+        )
+
+        app.buttons["Present PaymentSheet"].tap()
+        let payButton = app.buttons["Pay SGD 50.99"]
+
+        // Select GrabPay
+        guard let grabPay = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "GrabPay")
+        else {
+            XCTFail()
+            return
+        }
+        grabPay.tap()
+
+        // Attempt payment
+        payButton.tap()
+
+        // Close the webview, no need to see the successful pay
+        let webviewCloseButton = app.otherElements["TopBrowserBar"].buttons["Close"]
+        XCTAssertTrue(webviewCloseButton.waitForExistence(timeout: 10.0))
+        webviewCloseButton.tap()
+    }
+
     func testPaymentIntent_USBankAccount() {
         _testUSBankAccount(mode: .payment, integrationType: .normal)
     }
@@ -689,6 +815,36 @@ class PaymentSheetStandardLPMUITests: PaymentSheetUITestCase {
         upi_id.typeText(XCUIKeyboardKey.return.rawValue)
 
         XCTAssertFalse(payButton.isEnabled)
+    }
+
+    // This only tests the PaymentSheet + PaymentIntent flow.
+    // Other confirmation flows are tested in PaymentSheet+LPMTests.swift
+    func testSEPADebitPaymentMethod_PaymentSheet() {
+        var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.currency = .eur
+        settings.allowsDelayedPMs = .on
+        loadPlayground(
+            app,
+            settings
+        )
+        app.buttons["Present PaymentSheet"].tap()
+
+        guard let sepa = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "SEPA Debit") else { XCTFail("Couldn't find SEPA"); return; }
+        sepa.tap()
+
+        app.textFields["Full name"].tap()
+        app.typeText("John Doe" + XCUIKeyboardKey.return.rawValue)
+        app.typeText("test@example.com" + XCUIKeyboardKey.return.rawValue)
+        app.typeText("AT611904300234573201" + XCUIKeyboardKey.return.rawValue)
+        app.textFields["Address line 1"].tap()
+        app.typeText("510 Townsend St" + XCUIKeyboardKey.return.rawValue)
+        app.typeText("Floor 3" + XCUIKeyboardKey.return.rawValue)
+        app.typeText("San Francisco" + XCUIKeyboardKey.return.rawValue)
+        app.textFields["ZIP"].tap()
+        app.typeText("94102" + XCUIKeyboardKey.return.rawValue)
+        app.buttons["Pay €50.99"].tap()
+        let successText = app.staticTexts["Success!"]
+        XCTAssertTrue(successText.waitForExistence(timeout: 10.0))
     }
 }
 
@@ -1038,36 +1194,6 @@ class PaymentSheetDeferredServerSideUITests: PaymentSheetUITestCase {
 
         app.buttons["Pay $50.99"].tap()
 
-        let successText = app.staticTexts["Success!"]
-        XCTAssertTrue(successText.waitForExistence(timeout: 10.0))
-    }
-
-    func testDeferredPaymentIntent_ServerSideConfirmation_SEPA() {
-        var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
-        settings.integrationType = .deferred_ssc
-        settings.currency = .eur
-        settings.allowsDelayedPMs = .on
-        loadPlayground(
-            app,
-            settings
-        )
-
-        app.buttons["Present PaymentSheet"].tap()
-
-        guard let sepa = scroll(collectionView: app.collectionViews.firstMatch, toFindCellWithId: "SEPA Debit") else { XCTFail("Couldn't find SEPA"); return; }
-        sepa.tap()
-
-        app.textFields["Full name"].tap()
-        app.typeText("John Doe" + XCUIKeyboardKey.return.rawValue)
-        app.typeText("test@example.com" + XCUIKeyboardKey.return.rawValue)
-        app.typeText("AT611904300234573201" + XCUIKeyboardKey.return.rawValue)
-        app.textFields["Address line 1"].tap()
-        app.typeText("510 Townsend St" + XCUIKeyboardKey.return.rawValue)
-        app.typeText("Floor 3" + XCUIKeyboardKey.return.rawValue)
-        app.typeText("San Francisco" + XCUIKeyboardKey.return.rawValue)
-        app.textFields["ZIP"].tap()
-        app.typeText("94102" + XCUIKeyboardKey.return.rawValue)
-        app.buttons["Pay €50.99"].tap()
         let successText = app.staticTexts["Success!"]
         XCTAssertTrue(successText.waitForExistence(timeout: 10.0))
     }

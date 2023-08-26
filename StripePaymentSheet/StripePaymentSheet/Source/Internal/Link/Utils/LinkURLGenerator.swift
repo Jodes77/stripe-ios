@@ -40,25 +40,22 @@ struct LinkURLParams: Encodable {
 }
 
 class LinkURLGenerator {
-    static func linkParams(configuration: PaymentSheet.Configuration, intent: Intent) async throws -> LinkURLParams {
+    static func linkParams(configuration: PaymentSheet.Configuration, intent: Intent) throws -> LinkURLParams {
         guard let publishableKey = configuration.apiClient.publishableKey ?? STPAPIClient.shared.publishableKey else {
             throw LinkURLGeneratorError.noPublishableKey
         }
-        guard let merchantCountryCode = intent.countryCode else {
-            throw LinkURLGeneratorError.noMerchantCountryCode
-        }
 
         // We only expect regionCode to be nil in rare situations with a buggy simulator. Use a default value we can detect server-side.
-        let customerCountryCode = configuration.defaultBillingDetails.address.country ?? Locale.current.regionCode ?? "XX"
+        let customerCountryCode = intent.countryCode ?? configuration.defaultBillingDetails.address.country ?? Locale.current.regionCode ?? "US"
 
-        // Get email from the billing details, or the Customer object if the billing details are empty
-        var customerEmail = configuration.defaultBillingDetails.email
+        let merchantCountryCode = intent.merchantCountryCode ?? customerCountryCode
+
+        // Get email from the previously fetched account in the Link button, or the billing details, or the Customer object
+        var customerEmail = LinkAccountContext.shared.account?.email
+
         if customerEmail == nil,
-           let customerID = configuration.customer?.id,
-           let ephemeralKey = configuration.customer?.ephemeralKeySecret,
-           let customer = try? await configuration.apiClient.retrieveCustomer(customerID, using: ephemeralKey)
-        {
-            customerEmail = customer.email
+           let defaultBillingEmail = configuration.defaultBillingDetails.email {
+            customerEmail = defaultBillingEmail
         }
 
         let merchantInfo = LinkURLParams.MerchantInfo(businessName: configuration.merchantDisplayName, country: merchantCountryCode)
@@ -91,7 +88,7 @@ class LinkURLGenerator {
     }
 
     static func url(configuration: PaymentSheet.Configuration, intent: Intent) async throws -> URL {
-        let params = try await Self.linkParams(configuration: configuration, intent: intent)
+        let params = try Self.linkParams(configuration: configuration, intent: intent)
         return try url(params: params)
     }
 }
@@ -106,5 +103,4 @@ extension LinkURLParams {
 enum LinkURLGeneratorError: Error {
     case urlCreationFailed
     case noPublishableKey
-    case noMerchantCountryCode
 }

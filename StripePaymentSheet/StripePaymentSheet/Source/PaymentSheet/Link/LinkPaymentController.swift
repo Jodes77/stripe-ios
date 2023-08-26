@@ -14,8 +14,6 @@ import UIKit
 
 /// `LinkPaymentController` encapsulates the Link payment flow, allowing you to let your customers pay with their Link account.
 /// This feature is currently invite-only. To accept payments, [use the Mobile Payment Element.](https://stripe.com/docs/payments/accept-a-payment?platform=ios&ui=payment-sheet)
-@available(iOSApplicationExtension, unavailable)
-@available(macCatalystApplicationExtension, unavailable)
 @_spi(LinkOnly) public class LinkPaymentController: NSObject {
     private let mode: PaymentSheet.InitializationMode
     private let configuration: PaymentSheet.Configuration
@@ -142,7 +140,7 @@ import UIKit
             switch mode {
             case .paymentIntentClientSecret(let clientSecret):
                 guard let paymentIntentId = STPPaymentIntent.id(fromClientSecret: clientSecret) else {
-                    continuation.resume(throwing: PaymentSheetError.unknown(debugDescription: "Invalid client secret"))
+                    continuation.resume(throwing: PaymentSheetError.invalidClientSecret)
                     return
                 }
                 apiClient.createLinkAccountSession(paymentIntentID: paymentIntentId,
@@ -155,7 +153,7 @@ import UIKit
                 }
             case .setupIntentClientSecret(let clientSecret):
                 guard let setupIntentId = STPSetupIntent.id(fromClientSecret: clientSecret) else {
-                    continuation.resume(throwing: PaymentSheetError.unknown(debugDescription: "Invalid client secret"))
+                    continuation.resume(throwing: PaymentSheetError.invalidClientSecret)
                     return
                 }
                 apiClient.createLinkAccountSession(setupIntentID: setupIntentId,
@@ -225,7 +223,7 @@ import UIKit
         }
 
         guard let linkAccountSession = linkAccountSession else {
-            continuation.resume(throwing: PaymentSheetError.unknown(debugDescription: "Failed to create link account session"))
+            continuation.resume(throwing: PaymentSheetError.failedToCreateLinkSession)
             return
         }
 
@@ -270,7 +268,7 @@ import UIKit
     @_spi(LinkOnly) public func confirm(from presentingViewController: UIViewController) async throws {
         guard let paymentMethodId = paymentMethodId else {
             assertionFailure("`confirm` should not be called without the customer authorizing Link. Make sure to call `present` first if your customer hasn't previously selected Link as a payment method.")
-            throw PaymentSheetError.unknown(debugDescription: "confirm called without authorizing Link")
+            throw PaymentSheetError.linkNotAuthorized
         }
         let authenticationContext = AuthenticationContext(presentingViewController: presentingViewController, appearance: .default)
         try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Swift.Error>) in
@@ -321,7 +319,7 @@ import UIKit
                         authenticationContext: authenticationContext,
                         paymentHandler: STPPaymentHandler.shared(),
                         isFlowController: true,
-                        mandateData: STPMandateDataParams.makeWithInferredValues()) { result in
+                        mandateData: STPMandateDataParams.makeWithInferredValues()) { result, _ in
                     switch result {
                     case .canceled:
                         continuation.resume(throwing: Error.canceled)
@@ -355,8 +353,6 @@ import UIKit
     }
 }
 
-@available(iOSApplicationExtension, unavailable)
-@available(macCatalystApplicationExtension, unavailable)
 @_spi(LinkOnly)
 extension LinkPaymentController: LoadingViewControllerDelegate {
     func shouldDismiss(_ loadingViewController: LoadingViewController) {

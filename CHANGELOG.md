@@ -1,4 +1,62 @@
-## X.Y.Z 2023-XX-YY
+## x.x.x x-x-x
+### PaymentSheet
+* [Added] Support for AmazonPay (private beta), BLIK, and FPX with PaymentIntents.
+* [Fixed] A bug where payment amounts were not displayed correctly for LAK currency.
+
+### StripeApplePay
+* Fixed a compile-time issue with using StripeApplePay in an App Extension. ([#2853](https://github.com/stripe/stripe-ios/issues/2853))
+
+### CustomerSheet
+* [Added] `CustomerSheet`(https://stripe.com/docs/elements/customer-sheet?platform=ios) API, a prebuilt UI component that lets your customers manage their saved payment methods.
+
+## 23.14.0 2023-08-21
+### All
+* Improved redirect UX when using Cash App Pay.
+
+### PaymentSheet
+* [Added] Support for GrabPay with PaymentIntents.
+
+### Payments
+* [Added] You can now create an STPConnectAccountParams without specifying a business type.
+
+### Basic Integration
+* [Added] Adds `applePayLaterAvailability` to `STPPaymentContext`, a property that mirrors `PKPaymentRequest.applePayLaterAvailability`. This is useful if you need to disable Apple Pay Later. Note: iOS 17+.
+
+
+## 23.13.0 2023-08-07
+### All
+* [Fixed] Fixed compatibility with Xcode 15 beta 3. visionOS is now supported in iPadOS compatibility mode.
+### PaymentSheet
+* [Added] Enable bancontact and sofort for SetupIntents and PaymentIntents with setup_future_usage. Note: PaymentSheet doesn't display saved SEPA Debit payment methods yet.
+### CustomerSheet
+* [Added] `us_bank_account` PaymentMethod is now available in CustomerSheet
+
+## 23.12.0 2023-07-31
+### PaymentSheet
+* [Added] Enable SEPA Debit and iDEAL for SetupIntents and PaymentIntents with setup_future_usage. Note: PaymentSheet doesn't display saved SEPA Debit payment methods yet.
+* [Added] Add removeSavedPaymentMethodMessage to PaymentSheet.Configuration and CustomerSheet.Configuration. 
+
+### Identity
+* [Added] Supports [phone verification](https://stripe.com/docs/identity/phone) in Identity mobile SDK.
+
+
+## 23.11.2 2023-07-24
+### PaymentSheet
+* [Fixed] Update stp_icon_add@3x.png to 8bit color depth (Thanks @jszumski)
+
+### CustomerSheet
+* [Fixed] Ability to removing payment method immediately after adding it.
+* [Fixed] Re-init addPaymentMethodViewController after adding payment method to allow for adding another payment method
+
+## 23.11.1 2023-07-18
+### PaymentSheet
+* [Fixed] Fixed various bugs in Link private beta.
+
+## 23.11.0 2023-07-17
+### CustomerSheet
+* [Changed] Breaking interface change for `CustomerSheetResult`. `CustomerSheetResult.canceled` now has a nullable associated value signifying that there is no selected payment method. Please use both `.canceled(StripeOptionSelection?)` and `.selected(PaymentOptionSelection?)` to update your UI to show the latest selected payment method.
+
+## 23.10.0 2023-07-10
 ### Payments
 * [Fixed] A bug where `mandate_data` was not being properly attached to PayPal SetupIntent's.
 ### PaymentSheet
