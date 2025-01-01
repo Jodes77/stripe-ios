@@ -4,7 +4,7 @@ project_type: ios
 app:
   envs:
   - FASTLANE_XCODE_LIST_TIMEOUT: "120"
-  - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.1
+  - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   - BITRISE_PROJECT_PATH: Stripe.xcworkspace
   - GIT_AUTHOR_NAME: Bitrise CI
   - GIT_AUTHOR_EMAIL: mobile-sdk-team@stripe.com
@@ -37,55 +37,51 @@ stages:
   stage-trigger-run-all:
     workflows:
     - framework-tests: {}
-    - test-builds-xcode-143: {}
     - test-builds-xcode-15: {}
-    - test-builds-xcode-143-release: {}
+    - test-builds-xcode-16: {}
+    - test-builds-vision: {}
     - install-tests-non-carthage: {}
     - lint-tests: {}
     - size-report: {}
     - ui-tests-1: {}
     - ui-tests-2: {}
+    - ui-tests-3: {}
+    - ui-tests-4: {}
     - integration-all: {}
-    - deploy-dry-run: {}
+    - lokalise-upload: {}
   stage-releases-run-all:
     workflows:
-    - framework-tests: {}
-    - test-builds-xcode-143: {}
+    - framework-tests-no-mocks: {}
     - test-builds-xcode-15: {}
+    - test-builds-xcode-16: {}
+    - test-builds-xcode-15-release: {}
+    - test-builds-xcode-16-release: {}
+    - test-builds-vision: {}
     - deploy-docs: {}
     - install-tests-non-carthage: {}
     - lint-tests: {}
     - size-report: {}
-    - basic-integration-tests: {}
     - ui-tests-1: {}
     - ui-tests-2: {}
-    - legacy-tests-14: {}
+    - ui-tests-3: {}
+    - ui-tests-4: {}
+    - legacy-tests-15: {}
+    - legacy-tests-16: {}
     - carthage-install-test: {}
     - pod-lint-tests: {}
     - integration-all: {}
   stage-nightly-all:
     workflows:
-    - basic-integration-tests: {}
+    - test-builds-xcode-15-release: {}
+    - test-builds-xcode-16-release: {}
+    - framework-tests-no-mocks: {}
     - check-docs: {}
-    - legacy-tests-14: {}
+    - legacy-tests-15: {}
+    - legacy-tests-16: {}
     - carthage-install-test: {}
-    - data-theorem-sast: {}
     - deploy-dry-run: {}
     - pod-lint-tests: {}
 workflows:
-  basic-integration-tests:
-    steps:
-    - xcode-test@4:
-        inputs:
-        - destination: $DEFAULT_TEST_DEVICE
-        - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
-        - scheme: Basic Integration
-    - deploy-to-bitrise-io@2: {}
-    before_run:
-    - prep_all
-    after_run:
-    - notify_ci
   carthage-install-test:
     steps:
     - fastlane@3:
@@ -96,6 +92,8 @@ workflows:
     - prep_all
     after_run:
     - notify_ci
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   check-docs:
     steps:
     - script@1:
@@ -104,36 +102,6 @@ workflows:
         title: Build documentation
     before_run:
     - prep_all
-    after_run:
-    - notify_ci
-  data-theorem-sast:
-    steps:
-    - script@1:
-        inputs:
-        - content: bundle config set path 'vendor/bundle'
-        is_always_run: true
-        title: Set Bundler to use local vendor directory
-    - script@1:
-        inputs:
-        - content: bundle config set without 'development'
-        title: Set bundler to ignore development and test gems
-    - git-clone@6: {}
-    - cache-pull@2: {}
-    - tuist@0:
-        run_if: .IsCI
-        inputs:
-        - command: generate -n
-    - bundler@0: {}
-    - cache-push@2:
-        inputs:
-        - compress_archive: "true"
-        - cache_paths: |
-            vendor
-            SourcePackages
-    - script@1:
-        inputs:
-        - content: bundle exec ./ci_scripts/push_dt.rb "$BITRISE_GIT_BRANCH" "$DT_UPLOAD_API_KEY"
-        title: Submit app to Data Theorem for SAST
     after_run:
     - notify_ci
   deploy-docs:
@@ -148,14 +116,15 @@ workflows:
         inputs:
         - merge_pr: "no"
         - fetch_tags: "yes"
-    - cache-pull@2: {}
-    - bundler@0: {}
-    - cache-push@2:
+    - restore-cache@2.4:
         inputs:
-        - compress_archive: "true"
-        - cache_paths: |
+        - key: bundle-cache-{{ checksum "Gemfile.lock" }}
+    - bundler@0: {}
+    - save-cache@1:
+        inputs:
+        - key: bundle-cache-{{ checksum "Gemfile.lock" }}
+        - paths: |
             vendor
-            SourcePackages
     - script@1:
         inputs:
         - content: git fetch origin
@@ -181,14 +150,21 @@ workflows:
         - content: bundle exec ./ci_scripts/deploy_release.rb --dry-run
         is_always_run: true
         title: Deploy release
+    - script@1:
+        inputs:
+        - content: bundle exec ./ci_scripts/export_builds.rb
+        is_always_run: true
+        title: Export builds        
     before_run:
     - prep_all
     after_run:
     - notify_ci
     meta:
       bitrise.io:
-        stack: osx-xcode-14.1.x-ventura
-        machine_type_id: g2-m1.8core
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   deploy-example-apps:
     steps:
     - set-xcode-build-number@1:
@@ -222,21 +198,35 @@ workflows:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: FinancialConnections Example
-    - pagerduty@0:
+    - slack@3:
         is_always_run: true
         run_if: .IsBuildFailed
         inputs:
-          - event_description: iOS E2E tests failing! $BITRISE_BUILD_URL.
-          - integration_key: $AUX_PAGERDUTY_INTEGRATION_KEY
+        - webhook_url: $WEBHOOK_SLACK_CUX_BOTS
+        - webhook_url_on_error: $WEBHOOK_SLACK_CUX_BOTS
+        - text_on_error: "iOS build failed (c.c. @connections-consumer-bank-network-oncall @mats)"
+    - slack@3:
+        is_always_run: true
+        inputs:
+        - webhook_url: $WEBHOOK_SLACK_CONNECTIONS_MOBILE
+        - webhook_url_on_error: $WEBHOOK_SLACK_CONNECTIONS_MOBILE
     - slack@3:
         is_always_run: true
         run_if: .IsBuildFailed
         inputs:
         - webhook_url: $SLACK_KGAIDIS_TESTING_WEBHOOK_URL
         - webhook_url_on_error: $SLACK_KGAIDIS_TESTING_WEBHOOK_URL
+    - slack@3:
+        is_always_run: true
+        run_if: .IsBuildFailed
+        inputs:
+        - webhook_url: $SLACK_CONNECTIONS_IOS_FAILURES_WEBHOOK_URL
+        - webhook_url_on_error: $SLACK_CONNECTIONS_IOS_FAILURES_WEBHOOK_URL
     - deploy-to-bitrise-io@2: {}
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   financial-connections-stability-tests-for-edge:
     before_run:
     - prep_all
@@ -245,9 +235,11 @@ workflows:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: FinancialConnections Example
     - deploy-to-bitrise-io@2: {}
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   framework-tests:
     steps:
     - fastlane@3:
@@ -262,74 +254,74 @@ workflows:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeiOS
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripePayments
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripePaymentsUI
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripePaymentSheet
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeCameraCore
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeCore
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
+        - scheme: StripeConnect
+    - xcode-test@4:
+        inputs:
+        - destination: $DEFAULT_TEST_DEVICE
+        - test_repetition_mode: retry_on_failure
+        - maximum_test_repetitions: "2"
         - scheme: StripeIdentity
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeFinancialConnections
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeCardScan
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeApplePay
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: StripeUICore
-    - xcode-test@4:
-        inputs:
-        - destination: $DEFAULT_TEST_DEVICE
-        - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
-        - scheme: StripeLinkCore
     - deploy-to-bitrise-io@2: {}
     - save-spm-cache@1: {}
     before_run:
@@ -337,50 +329,97 @@ workflows:
     after_run: []
     meta:
       bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1.8core
-    envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
-  test-builds-xcode-143:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+  framework-tests-no-mocks:
     steps:
-    - xcode-build-for-test@2:
+    - fastlane@3:
         inputs:
-        - scheme: AllStripeFrameworks
-    envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 8,OS=16.4
+        - lane: preflight
+        title: fastlane preflight
+    - xcode-test@4:
+        inputs:
+        - destination: $DEFAULT_TEST_DEVICE
+        - test_repetition_mode: retry_on_failure
+        - maximum_test_repetitions: "2"
+        - scheme: AllStripeFrameworks-NoMocks
+    - deploy-to-bitrise-io@2: {}
+    - save-spm-cache@1: {}
     before_run:
     - prep_all
+    after_run:
+    - notify_ci
     meta:
       bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1.8core
-  test-builds-xcode-143-release:
-    steps:
-    - xcode-build-for-test@2:
-        inputs:
-        - scheme: AllStripeFrameworks
-        - configuration: Release
-    envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 8,OS=16.4
-    before_run:
-    - prep_all
-    meta:
-      bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1.8core
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
   test-builds-xcode-15:
     steps:
     - xcode-build-for-test@2:
         inputs:
         - scheme: AllStripeFrameworks
+        - destination: generic/platform=iOS Simulator
+    - deploy-to-bitrise-io@2: {}
     envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12,OS=17.0
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 15,OS=17.0
     before_run:
     - prep_all
     meta:
       bitrise.io:
-        stack: osx-xcode-15.0.x-edge
-        machine_type_id: g2-m1.8core
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+  test-builds-xcode-16:
+    steps:
+    - xcode-build-for-test@2:
+        inputs:
+        - scheme: AllStripeFrameworks
+        - destination: generic/platform=iOS Simulator
+    - deploy-to-bitrise-io@2: {}
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 15,OS=18.0
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.0.x
+        machine_type_id: g2.mac.large
+  test-builds-xcode-15-release:
+    steps:
+    - script@1:
+        inputs:
+        - content: xcodebuild build -workspace "Stripe.xcworkspace" -scheme "AllStripeFrameworks" -configuration "Release" -sdk "iphonesimulator" | xcpretty
+        title: Build release builds
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+  test-builds-xcode-16-release:
+    steps:
+    - script@1:
+        inputs:
+        - content: xcodebuild build -workspace "Stripe.xcworkspace" -scheme "AllStripeFrameworks" -configuration "Release" -sdk "iphonesimulator" | xcpretty
+        title: Build release builds
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-16.0.x
+        machine_type_id: g2.mac.large
+  test-builds-vision:
+    steps:
+    - xcode-build-for-test@2:
+        inputs:
+        - scheme: StripePaymentSheet
+        - destination: generic/platform=visionOS Simulator
+    - deploy-to-bitrise-io@2: {}
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.2.x
+        machine_type_id: g2.mac.large
   install-tests-non-carthage:
     steps:
     - fastlane@3:
@@ -405,13 +444,15 @@ workflows:
         title: fastlane installation_spm_swift
     before_run:
     - prep_all
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   integration-all:
     steps:
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: IntegrationTester
         - log_formatter: xcbeautify
     - deploy-to-bitrise-io@2: {}
@@ -419,26 +460,44 @@ workflows:
     - prep_all
     meta:
       bitrise.io:
-        stack: osx-xcode-14.1.x-ventura
-        machine_type_id: g2-m1-max.10core
-  legacy-tests-14:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
+  legacy-tests-15:
     steps:
     - fastlane@3:
         inputs:
-        - lane: legacy_tests_14
-        title: fastlane legacy_tests_14
+        - lane: legacy_tests_15
+        title: fastlane legacy_tests_15
     envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 8,OS=14.5
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=15.5
     meta:
       bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1.8core
-
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
     before_run:
     - prep_all
     after_run:
     - upload_logs
     - notify_ci
+  legacy-tests-16:
+    steps:
+    - fastlane@3:
+        inputs:
+        - lane: legacy_tests_16
+        title: fastlane legacy_tests_16
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
+    before_run:
+    - prep_all
+    after_run:
+    - upload_logs
+    - notify_ci   
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large     
   lint-tests:
     steps:
     - script@1:
@@ -463,12 +522,10 @@ workflows:
         title: fastlane analyze
     before_run:
     - prep_all
-    envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 14,OS=16.4
     meta:
       bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1.8core
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
   notify_ci:
     steps:
     - script@1:
@@ -477,14 +534,30 @@ workflows:
         title: Send notification if failed
         is_always_run: true
         run_if: .IsBuildFailed
+  lokalise-upload:
+    steps:
+    - script@1:
+        inputs:
+        - content: bundle exec ./ci_scripts/upload_localized_strings_to_lokalise.sh
+        title: Upload strings to lokalise
+    before_run:
+    - prep_all
+    envs:
+      - LOKALISE_API_KEY: $LOKALISE_API_KEY
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large   
   pod-lint-tests:
     steps:
     - script@1:
         inputs:
-        - content: pod lib lint --include-podspecs='*.podspec'
+        - content: pod lib lint --include-podspecs='*.podspec' --external-podspecs='ExternalPodspecs/*.podspec'
         title: pod lib lint
     before_run:
     - prep_all
+    envs:
+    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 12 mini,OS=16.4
   prep_all:
     steps:
     - xcode-start-simulator@0:
@@ -505,21 +578,19 @@ workflows:
         - content: bundle config set path 'vendor/bundle'
         is_always_run: true
         title: Set Bundler to use local vendor directory
-    - git-clone@6:
+    - git-clone@8.2:
         inputs:
         - clone_depth: "1"
-    - tuist@0:
-        run_if: .IsCI
+    - restore-cache@2.4:
         inputs:
-        - command: generate -n
-    - cache-pull@2: {}
+        - key: bundle-cache-{{ checksum "Gemfile.lock" }}
     - bundler@0: {}
-    - cache-push@2:
+    - save-cache@1:
         inputs:
-        - compress_archive: "true"
-        - cache_paths: |
+        - key: bundle-cache-{{ checksum "Gemfile.lock" }}
+        - paths: |
             vendor
-    - restore-spm-cache@1: {}
+    - restore-spm-cache@2.1: {}
   size-report:
     steps:
     - script@1:
@@ -531,14 +602,15 @@ workflows:
         inputs:
         - merge_pr: "no"
         - fetch_tags: "yes"
-    - cache-pull@2: {}
-    - bundler@0: {}
-    - cache-push@2:
+    - restore-cache@2.4:
         inputs:
-        - compress_archive: "true"
-        - cache_paths: |
+        - key: bundle-cache-{{ checksum "Gemfile.lock" }}
+    - bundler@0: {}
+    - save-cache@1:
+        inputs:
+        - key: bundle-cache-{{ checksum "Gemfile.lock" }}
+        - paths: |
             vendor
-            SourcePackages
     - script@1:
         inputs:
         - content: git fetch origin
@@ -547,13 +619,21 @@ workflows:
         inputs:
         - content: bundle exec fastlane size_report
         title: Generate size report
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.3.x
+        machine_type_id: g2.mac.large        
   ui-tests-1:
     steps:
+    - script@1:
+        inputs:
+        - content: IOS_SIMULATOR_UDID=`xcrun xctrace list devices 2>&1 | grep "iPhone 12 mini Simulator\ (16.4)" | awk -F " " '{print $NF}' | tr -d "()" |tail -1` && open -a "simulator" --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
+        title: Warm up emulator (iPhone 12 mini, OS=16.4)
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: PaymentSheet Example
         - test_plan: PaymentSheet Example-Shard1
         - log_formatter: xcbeautify
@@ -561,19 +641,21 @@ workflows:
     - deploy-to-bitrise-io@2: {}
     before_run:
     - prep_all
-    envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 14,OS=16.4
     meta:
       bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1-max.10core
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
   ui-tests-2:
     steps:
+    - script@1:
+        inputs:
+        - content: IOS_SIMULATOR_UDID=`xcrun xctrace list devices 2>&1 | grep "iPhone 12 mini Simulator\ (16.4)" | awk -F " " '{print $NF}' | tr -d "()" |tail -1` && open -a "simulator" --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
+        title: Warm up emulator (iPhone 12 mini, OS=16.4)    
     - xcode-test@4:
         inputs:
         - destination: $DEFAULT_TEST_DEVICE
         - test_repetition_mode: retry_on_failure
-        - maximum_test_repetitions: "5"
+        - maximum_test_repetitions: "2"
         - scheme: PaymentSheet Example
         - test_plan: PaymentSheet Example-Shard2
         - log_formatter: xcbeautify
@@ -581,12 +663,76 @@ workflows:
     - deploy-to-bitrise-io@2: {}
     before_run:
     - prep_all
-    envs:
-    - DEFAULT_TEST_DEVICE: platform=iOS Simulator,name=iPhone 14,OS=16.4
     meta:
       bitrise.io:
-        stack: osx-xcode-14.3.x-ventura
-        machine_type_id: g2-m1-max.10core
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+  ui-tests-3:
+    steps:
+    - script@1:
+        inputs:
+        - content: IOS_SIMULATOR_UDID=`xcrun xctrace list devices 2>&1 | grep "iPhone 12 mini Simulator\ (16.4)" | awk -F " " '{print $NF}' | tr -d "()" |tail -1` && open -a "simulator" --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
+        title: Warm up emulator (iPhone 12 mini, OS=16.4)      
+    - xcode-test@4:
+        inputs:
+        - destination: $DEFAULT_TEST_DEVICE
+        - test_repetition_mode: retry_on_failure
+        - maximum_test_repetitions: "2"
+        - scheme: PaymentSheet Example
+        - test_plan: PaymentSheet Example-Shard3
+        - log_formatter: xcbeautify
+        - xcodebuild_options: -maximum-concurrent-test-simulator-destinations 2 -maximum-parallel-testing-workers 2
+    - deploy-to-bitrise-io@2: {}
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+  ui-tests-4:
+    steps:
+    - script@1:
+        inputs:
+        - content: IOS_SIMULATOR_UDID=`xcrun xctrace list devices 2>&1 | grep "iPhone 12 mini Simulator\ (16.4)" | awk -F " " '{print $NF}' | tr -d "()" |tail -1` && open -a "simulator" --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
+        title: Warm up emulator (iPhone 12 mini, OS=16.4)    
+    - xcode-test@4:
+        inputs:
+        - destination: $DEFAULT_TEST_DEVICE
+        - test_repetition_mode: retry_on_failure
+        - maximum_test_repetitions: "2"
+        - scheme: PaymentSheet Example
+        - test_plan: PaymentSheet Example-Shard4
+        - log_formatter: xcbeautify
+        - xcodebuild_options: -maximum-concurrent-test-simulator-destinations 2 -maximum-parallel-testing-workers 2
+    - deploy-to-bitrise-io@2: {}
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large
+  ui-tests-5:
+    steps:
+    - script@1:
+        inputs:
+        - content: IOS_SIMULATOR_UDID=`xcrun xctrace list devices 2>&1 | grep "iPhone 12 mini Simulator\ (16.4)" | awk -F " " '{print $NF}' | tr -d "()" |tail -1` && open -a "simulator" --args -CurrentDeviceUDID $IOS_SIMULATOR_UDID
+        title: Warm up emulator (iPhone 12 mini, OS=16.4)    
+    - xcode-test@4:
+        inputs:
+        - destination: $DEFAULT_TEST_DEVICE
+        - test_repetition_mode: retry_on_failure
+        - maximum_test_repetitions: "2"
+        - scheme: StripeConnect Example
+        - test_plan: StripeConnectExample
+        - log_formatter: xcbeautify
+        - xcodebuild_options: -maximum-concurrent-test-simulator-destinations 2 -maximum-parallel-testing-workers 2
+    - deploy-to-bitrise-io@2: {}
+    before_run:
+    - prep_all
+    meta:
+      bitrise.io:
+        stack: osx-xcode-15.0.x
+        machine_type_id: g2.mac.large             
   upload_logs:
     steps:
     - deploy-to-bitrise-io@2:
@@ -598,5 +744,5 @@ workflows:
         title: Deploy test log artifacts
 meta:
   bitrise.io:
-    stack: osx-xcode-14.1.x-ventura
-    machine_type_id: g2-m1.8core
+    stack: osx-xcode-15.0.x
+    machine_type_id: g2.mac.large

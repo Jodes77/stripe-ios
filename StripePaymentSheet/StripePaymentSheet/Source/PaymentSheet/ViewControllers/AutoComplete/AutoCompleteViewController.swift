@@ -48,7 +48,7 @@ class AutoCompleteViewController: UIViewController {
             errorLabel.isHidden = latestError == nil
         }
     }
-    private var theme: ElementsUITheme {
+    private var theme: ElementsAppearance {
         return configuration.appearance.asElementsTheme
     }
 
@@ -68,7 +68,9 @@ class AutoCompleteViewController: UIViewController {
         let tableView = UITableView()
         tableView.delegate = self
         tableView.dataSource = self
+        #if !canImport(CompositorServices)
         tableView.keyboardDismissMode = .onDrag
+        #endif
         tableView.backgroundColor = configuration.appearance.colors.background
         tableView.separatorColor = configuration.appearance.colors.componentDivider
         tableView.tableFooterView = UIView()

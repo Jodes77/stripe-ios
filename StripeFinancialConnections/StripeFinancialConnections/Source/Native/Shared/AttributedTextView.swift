@@ -26,7 +26,7 @@ final class AttributedTextView: HitTestView {
     private let boldFont: FinancialConnectionsFont
     private let linkFont: FinancialConnectionsFont
     private let textColor: UIColor
-    private let alignCenter: Bool
+    private let alignment: NSTextAlignment?
     private let textView: IncreasedHitTestTextView
     private var linkURLStringToAction: [String: (URL) -> Void] = [:]
 
@@ -35,9 +35,12 @@ final class AttributedTextView: HitTestView {
         boldFont: FinancialConnectionsFont,
         linkFont: FinancialConnectionsFont,
         textColor: UIColor,
-        linkColor: UIColor = .textBrand,
-        alignCenter: Bool = false
+        // links are the same color as the text by default
+        linkColor: UIColor? = nil,
+        showLinkUnderline: Bool = true,
+        alignment: NSTextAlignment? = nil
     ) {
+        let linkColor = linkColor ?? textColor
         let textContainer = NSTextContainer(size: .zero)
         let layoutManager = VerticalCenterLayoutManager()
         layoutManager.addTextContainer(textContainer)
@@ -51,7 +54,7 @@ final class AttributedTextView: HitTestView {
         self.boldFont = boldFont
         self.linkFont = linkFont
         self.textColor = textColor
-        self.alignCenter = alignCenter
+        self.alignment = alignment
         super.init(frame: .zero)
         textView.isScrollEnabled = false
         textView.delaysContentTouches = false
@@ -61,9 +64,15 @@ final class AttributedTextView: HitTestView {
         // Get rid of the extra padding added by default to UITextViews
         textView.textContainerInset = .zero
         textView.textContainer.lineFragmentPadding = 0.0
-        textView.linkTextAttributes = [
-            .foregroundColor: linkColor
-        ]
+        textView.linkTextAttributes = {
+            var linkTextAttributes: [NSAttributedString.Key: Any] = [
+                .foregroundColor: linkColor
+            ]
+            if showLinkUnderline {
+                linkTextAttributes[.underlineStyle] = NSUnderlineStyle.single.rawValue
+            }
+            return linkTextAttributes
+        }()
         textView.delegate = self
         // remove clipping so when user selects an attributed
         // link, the selection area does not get clipped
@@ -114,8 +123,8 @@ final class AttributedTextView: HitTestView {
         links: [LinkDescriptor]
     ) {
         let paragraphStyle = NSMutableParagraphStyle()
-        if alignCenter {
-            paragraphStyle.alignment = .center
+        if let alignment {
+            paragraphStyle.alignment = alignment
         }
         paragraphStyle.minimumLineHeight = font.lineHeight
         paragraphStyle.maximumLineHeight = font.lineHeight
@@ -149,6 +158,7 @@ final class AttributedTextView: HitTestView {
 
 extension AttributedTextView: UITextViewDelegate {
 
+    #if !canImport(CompositorServices)
     func textView(
         _ textView: UITextView,
         shouldInteractWith URL: URL,
@@ -156,6 +166,7 @@ extension AttributedTextView: UITextViewDelegate {
         interaction: UITextItemInteraction
     ) -> Bool {
         if let linkAction = linkURLStringToAction[URL.absoluteString] {
+            FeedbackGeneratorAdapter.buttonTapped()
             linkAction(URL)
             return false
         } else {
@@ -163,6 +174,7 @@ extension AttributedTextView: UITextViewDelegate {
         }
         return true
     }
+    #endif
 
     func textViewDidChangeSelection(_ textView: UITextView) {
         // disable the ability to select/copy the text as a way to improve UX
@@ -211,5 +223,23 @@ private class VerticalCenterLayoutManager: NSLayoutManager {
         } else {
             super.drawGlyphs(forGlyphRange: glyphsToShow, at: origin)
         }
+    }
+
+    override func underlineGlyphRange(
+        _ glyphRange: NSRange,
+        underlineType: NSUnderlineStyle,
+        lineFragmentRect: CGRect,
+        lineFragmentGlyphRange: NSRange,
+        containerOrigin: CGPoint
+    ) {
+        var lineFragmentRect = lineFragmentRect
+        lineFragmentRect.origin.y += 1.5 // move the underline down more
+        super.underlineGlyphRange(
+            glyphRange,
+            underlineType: underlineType,
+            lineFragmentRect: lineFragmentRect,
+            lineFragmentGlyphRange: lineFragmentGlyphRange,
+            containerOrigin: containerOrigin
+        )
     }
 }

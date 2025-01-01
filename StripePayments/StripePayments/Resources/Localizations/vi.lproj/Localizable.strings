@@ -1,4 +1,4 @@
-"AU BECS Direct Debit" = "Ghi nợ trực tiếp AU Becs";
+"AU Direct Debit" = "Ghi nợ trực tiếp AU";
 
 "Affirm" = "Affirm";
 
@@ -8,9 +8,9 @@
 
 "BLIK" = "BLIK";
 
-"Bancontact" = "Bancontact";
+"Bacs Direct Debit" = "Ghi nợ Trực tiếp Bacs";
 
-"Bank" = "Ngân hàng";
+"Bancontact" = "Bancontact";
 
 "Boleto" = "Boleto";
 
@@ -28,6 +28,8 @@
 
 "Klarna" = "Klarna";
 
+"Konbini" = "Konbini";
+
 "Link" = "Link";
 
 "NetBanking" = "Ngân hàng trực tuyến";
@@ -42,11 +44,13 @@
 
 "Sofort" = "Sofort";
 
+"Swish" = "Swish";
+
 "Timed out authenticating your payment method -- try again" = "Đã hết thời gian xác thực phương thức thanh toán -- hãy thử lại sau";
 
 "UPI" = "UPI";
 
-"US Bank Account" = "Tài khoản ngân hàng Mỹ";
+"US bank account" = "Tài khoản ngân hàng Hoa Kỳ";
 
 "Unknown" = "Không biết";
 

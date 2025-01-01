@@ -16,6 +16,11 @@
         "value" : "$(SRCROOT)\/..\/..\/Tests\/ReferenceImages"
       }
     ],
+    "locationScenario" : {
+      "identifier" : "San Francisco, CA, USA",
+      "referenceType" : "built-in"
+    },
+    "region" : "US",
     "targetForVariableExpansion" : {
       "containerPath" : "container:PaymentSheet Example.xcodeproj",
       "identifier" : "D017784615929C0DD3717FE8",
@@ -26,13 +31,34 @@
     {
       "parallelizable" : true,
       "skippedTests" : [
+        "EmbeddedUITests",
+        "EmbeddedUITests\/testUpdate()",
+        "PaymentSheetBillingCollectionLPMUITests",
+        "PaymentSheetBillingCollectionUICardTests",
+        "PaymentSheetBillingCollectionUITestCase",
+        "PaymentSheetCVCRecollectionUITests",
+        "PaymentSheetCardBrandFilteringUITests",
+        "PaymentSheetCustomerSessionCBCUITests",
+        "PaymentSheetCustomerSessionDedupeUITests",
+        "PaymentSheetDefaultSPMUITests",
+        "PaymentSheetDefaultSPMUITests\/testDefaultSPMHorizontalNavigation()",
+        "PaymentSheetDefaultSPMUITests\/testDefaultSPMNavigationFlagOff()",
+        "PaymentSheetDefaultSPMUITests\/testDefaultSPMVerticalNavigation()",
         "PaymentSheetDeferredServerSideUITests",
         "PaymentSheetDeferredUIBankAccountTests",
         "PaymentSheetDeferredUITests",
+        "PaymentSheetExternalPMUITests",
+        "PaymentSheetGDPRUITests",
+        "PaymentSheetLinkUITests",
         "PaymentSheetSnapshotTests",
+        "PaymentSheetStandardLPMUICBCTests",
+        "PaymentSheetStandardLPMUICase",
+        "PaymentSheetStandardLPMUIOneTests",
         "PaymentSheetStandardLPMUITests",
-        "PaymentSheetStandardUITests",
-        "PaymentSheetUITestCase"
+        "PaymentSheetStandardLPMUIThreeTests",
+        "PaymentSheetStandardLPMUITwoTests",
+        "PaymentSheetUITestCase",
+        "PaymentSheetVerticalUITests"
       ],
       "target" : {
         "containerPath" : "container:PaymentSheet Example.xcodeproj",

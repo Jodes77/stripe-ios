@@ -1,5 +1,5 @@
 {
-  "apple_pay_preference": "disabled",
+  "apple_pay_preference": "enabled",
   "business_name": "Mobile Example Account",
   "experiments": {
     "miui_payment_element_aa_experiment": "control"
@@ -15,7 +15,17 @@
     "instant_debits_inline_institution": true,
     "link_bank_onboarding_enabled": false,
     "link_financial_incentives_experiment_enabled": false,
-    "link_local_storage_login_enabled": true
+    "link_local_storage_login_enabled": true,
+    "link_funding_sources": [
+        "CARD",
+        "BANK_ACCOUNT",
+    ],
+    "link_consumer_incentive": {
+        "incentive_params": {
+            "payment_method": "link_instant_debits",
+        },
+        "incentive_display_text": "$5",
+    }
   },
   "merchant_country": "US",
   "merchant_currency": "usd",

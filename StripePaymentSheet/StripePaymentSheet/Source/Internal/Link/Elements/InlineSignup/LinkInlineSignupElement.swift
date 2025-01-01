@@ -10,11 +10,15 @@
 import UIKit
 
 final class LinkInlineSignupElement: Element {
+    let collectsUserInput: Bool = true
 
     private let signupView: LinkInlineSignupView
 
     lazy var view: UIView = {
-        return FormView(viewModel: .init(elements: [signupView], bordered: true, theme: viewModel.configuration.appearance.asElementsTheme))
+
+        return FormView(viewModel: .init(elements: [signupView],
+                                         bordered: viewModel.bordered,
+                                         theme: viewModel.configuration.appearance.asElementsTheme))
     }()
 
     var viewModel: LinkInlineSignupViewModel {
@@ -32,13 +36,16 @@ final class LinkInlineSignupElement: Element {
     }
 
     convenience init(
-        configuration: PaymentSheet.Configuration,
+        configuration: PaymentElementConfiguration,
         linkAccount: PaymentSheetLinkAccount?,
-        country: String?
+        country: String?,
+        showCheckbox: Bool,
+        accountService: LinkAccountServiceProtocol
     ) {
         self.init(viewModel: LinkInlineSignupViewModel(
             configuration: configuration,
-            accountService: LinkAccountService(apiClient: configuration.apiClient),
+            showCheckbox: showCheckbox,
+            accountService: accountService,
             linkAccount: linkAccount,
             country: country
         ))

@@ -11,7 +11,7 @@ import Foundation
 /// An error returned from the Stripe API.
 ///
 /// https://stripe.com/docs/api/errors
-@_spi(STP) public struct StripeAPIError: UnknownFieldsDecodable {
+@_spi(STP) public struct StripeAPIError: UnknownFieldsDecodable, Encodable, Equatable {
     /// The type of error returned.
     @_spi(STP) public var type: ErrorType
     /// For some errors that could be handled programmatically,
@@ -31,6 +31,8 @@ import Foundation
     @_spi(STP) public var param: String?
     /// The response’s HTTP status code.
     @_spi(STP) public var statusCode: Int?
+    /// The Stripe API request ID, if available. Looks like `req_123`.
+    @_spi(STP) public var requestID: String?
 
     // More information may be available in `allResponseFields`, including
     // the PaymentIntent or PaymentMethod.

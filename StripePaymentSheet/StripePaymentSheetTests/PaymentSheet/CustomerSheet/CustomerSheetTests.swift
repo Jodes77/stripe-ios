@@ -7,7 +7,7 @@ import Foundation
 
 @_spi(STP) @testable import StripeCore
 @_spi(STP) @testable import StripePayments
-@testable import StripePaymentSheet
+@_spi(CustomerSessionBetaAccess) @_spi(CardBrandFilteringBeta) @_spi(AllowsSetAsDefaultPM) @testable import StripePaymentSheet
 
 import OHHTTPStubs
 import OHHTTPStubsSwift
@@ -18,9 +18,10 @@ class CustomerSheetTests: APIStubbedTestCase {
 
     func testLoadPaymentMethodInfo_newCustomer() throws {
         let stubbedAPIClient = stubbedAPIClient()
-        stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "card")
-        stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "us_bank_account")
-        stubSessions(paymentMethods: "\"card\"")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "card")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "us_bank_account")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "sepa_debit")
+        StubbedBackend.stubSessions(paymentMethods: "\"card\"")
 
         let configuration = CustomerSheet.Configuration()
         let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
@@ -31,7 +32,8 @@ class CustomerSheetTests: APIStubbedTestCase {
 
         let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
         let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
-        customerSheet.loadPaymentMethodInfo { result in
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
             guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
                 XCTFail()
                 return
@@ -45,9 +47,10 @@ class CustomerSheetTests: APIStubbedTestCase {
 
     func testLoadPaymentMethodInfo_singleCard() throws {
         let stubbedAPIClient = stubbedAPIClient()
-        stubPaymentMethods(fileMock: .saved_payment_methods_withCard_200, pmType: "card")
-        stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "us_bank_account")
-        stubSessions(paymentMethods: "\"card\"")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withCard_200, pmType: "card")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "us_bank_account")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "sepa_debit")
+        StubbedBackend.stubSessions(paymentMethods: "\"card\"")
 
         let configuration = CustomerSheet.Configuration()
         let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
@@ -58,7 +61,8 @@ class CustomerSheetTests: APIStubbedTestCase {
 
         let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
         let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
-        customerSheet.loadPaymentMethodInfo { result in
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
             guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
                 XCTFail()
                 return
@@ -73,9 +77,10 @@ class CustomerSheetTests: APIStubbedTestCase {
 
     func testLoadPaymentMethodInfo_singleBankAccount() throws {
         let stubbedAPIClient = stubbedAPIClient()
-        stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "card")
-        stubPaymentMethods(fileMock: .saved_payment_methods_withUSBank_200, pmType: "us_bank_account")
-        stubSessions(paymentMethods: "\"us_bank_account\"")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "card")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withUSBank_200, pmType: "us_bank_account")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "sepa_debit")
+        StubbedBackend.stubSessions(paymentMethods: "\"us_bank_account\"")
 
         let configuration = CustomerSheet.Configuration()
         let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
@@ -86,15 +91,16 @@ class CustomerSheetTests: APIStubbedTestCase {
 
         let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
         let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
-        customerSheet.loadPaymentMethodInfo { result in
-            guard case .success((let paymentMethods, let selectedPaymentMethod, let merchantSupportedPaymentMethodTypes)) = result else {
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, let selectedPaymentMethod, let elementsSession)) = result else {
                 XCTFail()
                 return
             }
             XCTAssertEqual(paymentMethods.count, 1)
             XCTAssertEqual(paymentMethods[0].type, .USBankAccount)
             XCTAssert(selectedPaymentMethod == nil)
-            XCTAssertEqual(merchantSupportedPaymentMethodTypes, [.USBankAccount])
+            XCTAssertEqual(elementsSession.orderedPaymentMethodTypes, [.USBankAccount])
             loadPaymentMethodInfo.fulfill()
         }
         wait(for: [loadPaymentMethodInfo], timeout: 5.0)
@@ -102,9 +108,11 @@ class CustomerSheetTests: APIStubbedTestCase {
 
     func testLoadPaymentMethodInfo_cardAndBankAccount() throws {
         let stubbedAPIClient = stubbedAPIClient()
-        stubPaymentMethods(fileMock: .saved_payment_methods_withCard_200, pmType: "card")
-        stubPaymentMethods(fileMock: .saved_payment_methods_withUSBank_200, pmType: "us_bank_account")
-        stubSessions(paymentMethods: "\"card\", \"us_bank_account\"")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withCard_200, pmType: "card")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withUSBank_200, pmType: "us_bank_account")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "sepa_debit")
+
+        StubbedBackend.stubSessions(paymentMethods: "\"card\", \"us_bank_account\"")
 
         let configuration = CustomerSheet.Configuration()
         let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
@@ -115,14 +123,46 @@ class CustomerSheetTests: APIStubbedTestCase {
 
         let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
         let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
-        customerSheet.loadPaymentMethodInfo { result in
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
             guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
                 XCTFail()
                 return
             }
             XCTAssertEqual(paymentMethods.count, 2)
-            XCTAssertEqual(paymentMethods[0].type, .card)
-            XCTAssertEqual(paymentMethods[1].type, .USBankAccount)
+            XCTAssert(paymentMethods[0].type == .card && paymentMethods[1].type == .USBankAccount ||
+                      paymentMethods[1].type == .card && paymentMethods[0].type == .USBankAccount)
+            XCTAssert(selectedPaymentMethod == nil)
+            loadPaymentMethodInfo.fulfill()
+        }
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
+    }
+
+    func testLoadPaymentMethodInfo_cardAndSepa() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withCard_200, pmType: "card")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "us_bank_account")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withSepa_200, pmType: "sepa_debit")
+        StubbedBackend.stubSessions(paymentMethods: "\"card\", \"sepa_debit\"")
+
+        let configuration = CustomerSheet.Configuration()
+        let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
+            .init(customerId: "cus_123", ephemeralKeySecret: "ek_456")
+        }, setupIntentClientSecretProvider: {
+            return "si_789"
+        }, apiClient: stubbedAPIClient)
+
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(paymentMethods.count, 2)
+            XCTAssert(paymentMethods[0].type == .card && paymentMethods[1].type == .SEPADebit ||
+                      paymentMethods[1].type == .card && paymentMethods[0].type == .SEPADebit)
             XCTAssert(selectedPaymentMethod == nil)
             loadPaymentMethodInfo.fulfill()
         }
@@ -136,7 +176,7 @@ class CustomerSheetTests: APIStubbedTestCase {
         let stubbedURLSessionConfig = APIStubbedTestCase.stubbedURLSessionConfig()
         stubbedURLSessionConfig.timeoutIntervalForRequest = fastTimeoutIntervalForRequest
         let stubbedAPIClient = stubbedAPIClient(configuration: stubbedURLSessionConfig)
-        stubSessions(paymentMethods: "\"card\"")
+        StubbedBackend.stubSessions(paymentMethods: "\"card\"")
 
         let configuration = CustomerSheet.Configuration()
         let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
@@ -155,7 +195,8 @@ class CustomerSheetTests: APIStubbedTestCase {
 
         let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completion block called")
         let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
-        customerSheet.loadPaymentMethodInfo { result in
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
             guard case .failure(let error) = result,
                   let nserror = error as NSError?,
                   nserror.code == NSURLErrorTimedOut,
@@ -167,63 +208,171 @@ class CustomerSheetTests: APIStubbedTestCase {
         }
         wait(for: [loadPaymentMethodInfo], timeout: 10.0)
     }
+    
+    func testLoadPaymentMethodInfo_filtersCard() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_withCard_200, pmType: "card")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "us_bank_account")
+        StubbedBackend.stubPaymentMethods(fileMock: .saved_payment_methods_200, pmType: "sepa_debit")
+        StubbedBackend.stubSessions(paymentMethods: "\"card\"")
 
-    private func stubSessions(paymentMethods: String) {
-        stubSessions(
-            fileMock: .elementsSessionsPaymentMethod_200,
-            responseCallback: { data in
-                return self.updatePaymentMethodDetail(
-                    data: data,
-                    variables: [
-                        "<paymentMethods>": paymentMethods,
-                        "<currency>": "\"usd\"",
-                    ]
-                )
+        var configuration = CustomerSheet.Configuration()
+        configuration.cardBrandAcceptance = .disallowed(brands: [.visa])
+        let customerAdapter = StripeCustomerAdapter(customerEphemeralKeyProvider: {
+            .init(customerId: "cus_123", ephemeralKeySecret: "ek_456")
+        }, setupIntentClientSecretProvider: {
+            return "si_789"
+        }, apiClient: stubbedAPIClient)
+
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration, customer: customerAdapter)
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, _, _)) = result else {
+                XCTFail()
+                return
             }
-        )
-    }
-
-    private func updatePaymentMethodDetail(data: Data, variables: [String: String]) -> Data {
-        var template = String(data: data, encoding: .utf8)!
-        for (templateKey, templateValue) in variables {
-            let translated = template.replacingOccurrences(of: templateKey, with: templateValue)
-            template = translated
+            // Card should be filtered out since it is a Visa
+            XCTAssertTrue(paymentMethods.isEmpty)
+            loadPaymentMethodInfo.fulfill()
         }
-        return template.data(using: .utf8)!
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
     }
-    private func stubSessions(fileMock: FileMock, responseCallback: ((Data) -> Data)? = nil) {
-        stub { urlRequest in
-            return urlRequest.url?.absoluteString.contains("/v1/elements/sessions") ?? false
-        } response: { _ in
-            let mockResponseData = try! fileMock.data()
-            let data = responseCallback?(mockResponseData) ?? mockResponseData
-            return HTTPStubsResponse(data: data, statusCode: 200, headers: nil)
+
+    func testLoadPaymentMethodInfo_CustomerSession() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubSessions(fileMock: .elementsSessions_customerSessionsCustomerSheet_200)
+        var configuration = CustomerSheet.Configuration()
+        configuration.apiClient = stubbedAPIClient
+
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration,
+                                          intentConfiguration: .init(setupIntentClientSecretProvider: { return "si_123" }),
+                                          customerSessionClientSecretProvider: { return .init(customerId: "cus_123", clientSecret: "cuss_123") })
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(paymentMethods.count, 0)
+            XCTAssert(selectedPaymentMethod == nil)
+            loadPaymentMethodInfo.fulfill()
         }
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
     }
 
-    private func stubPaymentMethods(
-        fileMock: FileMock,
-        pmType: String
-    ) {
-        stub { urlRequest in
-            let isPaymentMethodCall = urlRequest.url?.absoluteString.contains("/v1/payment_methods") ?? false
-            let isPaymentMethodType = urlRequest.url?.absoluteString.contains("type=\(pmType)") ?? false
-            return (isPaymentMethodCall && isPaymentMethodType)
-        } response: { _ in
-            let mockResponseData = try! fileMock.data()
-            return HTTPStubsResponse(data: mockResponseData, statusCode: 200, headers: nil)
+    func testLoadPaymentMethodInfo_CustomerSessionWithSavedPM() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubSessions(fileMock: .elementsSessions_customerSessionsCustomerSheetWithSavedPM_200)
+        var configuration = CustomerSheet.Configuration()
+        configuration.apiClient = stubbedAPIClient
+
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration,
+                                          intentConfiguration: .init(setupIntentClientSecretProvider: { return "si_123" }),
+                                          customerSessionClientSecretProvider: { return .init(customerId: "cus_123", clientSecret: "cuss_123") })
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
+                XCTFail()
+                return
+            }
+            XCTAssertEqual(paymentMethods.count, 1)
+            XCTAssert(selectedPaymentMethod == nil)
+            loadPaymentMethodInfo.fulfill()
         }
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
     }
-}
 
-public class ClassForBundle {}
-@_spi(STP) public enum FileMock: String, MockData {
-    public typealias ResponseType = StripeFile
-    public var bundle: Bundle { return Bundle(for: ClassForBundle.self) }
+    func testLoadPaymentMethodInfo_CustomerSessionFailsClaim() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubSessions(paymentMethods: "\"card\"")
+        var configuration = CustomerSheet.Configuration()
+        configuration.apiClient = stubbedAPIClient
 
-    case saved_payment_methods_200 = "MockFiles/saved_payment_methods_200"
-    case saved_payment_methods_withCard_200 = "MockFiles/saved_payment_methods_withCard_200"
-    case saved_payment_methods_withUSBank_200 = "MockFiles/saved_payment_methods_withUSBank_200"
+        let expectedFailure = expectation(description: "loadPaymentMethodInfo failed")
+        let customerSheet = CustomerSheet(configuration: configuration,
+                                          intentConfiguration: .init(setupIntentClientSecretProvider: { return "si_123" }),
+                                          customerSessionClientSecretProvider: { return .init(customerId: "cus_123", clientSecret: "cuss_123") })
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .failure = result else {
+                XCTFail()
+                return
+            }
+            expectedFailure.fulfill()
+        }
+        wait(for: [expectedFailure], timeout: 5.0)
+    }
+    
+    func testLoadPaymentMethodInfo_CustomerSessionFiltersSavedCard() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubSessions(fileMock: .elementsSessions_customerSessionsCustomerSheetWithSavedPM_200)
+        var configuration = CustomerSheet.Configuration()
+        configuration.apiClient = stubbedAPIClient
+        configuration.cardBrandAcceptance = .disallowed(brands: [.visa])
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration,
+                                          intentConfiguration: .init(setupIntentClientSecretProvider: { return "si_123" }),
+                                          customerSessionClientSecretProvider: { return .init(customerId: "cus_123", clientSecret: "cuss_123") })
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, _, _)) = result else {
+                XCTFail()
+                return
+            }
+            XCTAssertTrue(paymentMethods.isEmpty)
+            loadPaymentMethodInfo.fulfill()
+        }
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
+    }
 
-    case elementsSessionsPaymentMethod_200 = "MockFiles/elements_sessions_paymentMethod_200"
+    func testLoadPaymentMethodInfo_CustomerSession_NoDefaultPMHasSavedPaymentMethod() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubSessions(fileMock: .elementsSessions_customerSessionsCustomerSheetWithSavedPM_200)
+        var configuration = CustomerSheet.Configuration()
+        configuration.apiClient = stubbedAPIClient
+        configuration.allowsSetAsDefaultPM = true
+
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration,
+                                          intentConfiguration: .init(setupIntentClientSecretProvider: { return "si_123" }),
+                                          customerSessionClientSecretProvider: { return .init(customerId: "cus_123", clientSecret: "cuss_123") })
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
+                XCTFail()
+                return
+            }
+            XCTAssertFalse(paymentMethods.isEmpty)
+            XCTAssertNotNil(selectedPaymentMethod)
+            loadPaymentMethodInfo.fulfill()
+        }
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
+    }
+
+    func testLoadPaymentMethodInfo_CustomerSession_NoDefaultPMNoSavedPaymentMethod() throws {
+        let stubbedAPIClient = stubbedAPIClient()
+        StubbedBackend.stubSessions(fileMock: .elementsSessions_customerSessionsCustomerSheet_200)
+        var configuration = CustomerSheet.Configuration()
+        configuration.apiClient = stubbedAPIClient
+        configuration.allowsSetAsDefaultPM = true
+
+        let loadPaymentMethodInfo = expectation(description: "loadPaymentMethodInfo completed")
+        let customerSheet = CustomerSheet(configuration: configuration,
+                                          intentConfiguration: .init(setupIntentClientSecretProvider: { return "si_123" }),
+                                          customerSessionClientSecretProvider: { return .init(customerId: "cus_123", clientSecret: "cuss_123") })
+        let csDataSource = customerSheet.createCustomerSheetDataSource()!
+        csDataSource.loadPaymentMethodInfo { result in
+            guard case .success((let paymentMethods, let selectedPaymentMethod, _)) = result else {
+                XCTFail()
+                return
+            }
+            XCTAssertTrue(paymentMethods.isEmpty)
+            XCTAssertNil(selectedPaymentMethod)
+            loadPaymentMethodInfo.fulfill()
+        }
+        wait(for: [loadPaymentMethodInfo], timeout: 5.0)
+    }
 }

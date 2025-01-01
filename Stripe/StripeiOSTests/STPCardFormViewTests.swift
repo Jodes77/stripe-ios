@@ -83,8 +83,6 @@ class STPCardFormViewTests: XCTestCase {
         NSLocale.stp_withLocale(as: NSLocale(localeIdentifier: "zh_Hans_HK")) {
             let cardForm = STPCardFormView(
                 billingAddressCollection: .automatic,
-                includeCardScanning: false,
-                mergeBillingFields: false,
                 style: .standard,
                 postalCodeRequirement: .upe,
                 prefillDetails: nil
@@ -97,8 +95,6 @@ class STPCardFormViewTests: XCTestCase {
         NSLocale.stp_withLocale(as: NSLocale(localeIdentifier: "en_US")) {
             let cardForm = STPCardFormView(
                 billingAddressCollection: .automatic,
-                includeCardScanning: false,
-                mergeBillingFields: false,
                 style: .standard,
                 postalCodeRequirement: .upe,
                 prefillDetails: nil
@@ -111,8 +107,6 @@ class STPCardFormViewTests: XCTestCase {
         NSLocale.stp_withLocale(as: NSLocale(localeIdentifier: "en_US")) {
             let cardForm = STPCardFormView(
                 billingAddressCollection: .automatic,
-                includeCardScanning: false,
-                mergeBillingFields: false,
                 style: .standard,
                 postalCodeRequirement: .upe,
                 prefillDetails: nil,
@@ -132,8 +126,6 @@ class STPCardFormViewTests: XCTestCase {
         NSLocale.stp_withLocale(as: NSLocale(localeIdentifier: "en_US")) {
             let cardForm = STPCardFormView(
                 billingAddressCollection: .automatic,
-                includeCardScanning: false,
-                mergeBillingFields: false,
                 style: .standard,
                 postalCodeRequirement: .upe,
                 prefillDetails: prefillDeatils,
@@ -141,10 +133,58 @@ class STPCardFormViewTests: XCTestCase {
             )
 
             XCTAssertEqual(cardForm.numberField.text, prefillDeatils.formattedLast4)
-            XCTAssertEqual(cardForm.numberField.cardBrand, prefillDeatils.cardBrand)
+            XCTAssertEqual(cardForm.numberField.cardBrandState.brand, prefillDeatils.cardBrand)
             XCTAssertEqual(cardForm.expiryField.text, prefillDeatils.formattedExpiry)
             XCTAssertEqual(cardForm.cvcField.cardBrand, prefillDeatils.cardBrand)
         }
+    }
+
+    func testCBCWithPreferredNetwork() {
+        STPAPIClient.shared.publishableKey = STPTestingDefaultPublishableKey
+        let cardFormView = STPCardFormView(billingAddressCollection: .automatic, cbcEnabledOverride: true)
+        let cardParams = STPPaymentMethodCardParams()
+        cardParams.number = "5555552500001001"
+        cardParams.expYear = 2050
+        cardParams.expMonth = 12
+        cardParams.cvc = "123"
+        cardParams.networks = .init(preferred: "cartes_bancaires")
+        let billingDetails = STPPaymentMethodBillingDetails(postalCode: "12345", countryCode: "US")
+        let paymentMethodParams = STPPaymentMethodParams(card: cardParams, billingDetails: billingDetails, metadata: nil)
+        cardFormView.cardParams = paymentMethodParams
+        XCTAssertEqual(cardFormView.cardParams?.card?.number, cardParams.number)
+        let exp = expectation(description: "Wait for CBC load")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) {
+            XCTAssertEqual(cardFormView.cardParams?.card?.networks?.preferred, "cartes_bancaires")
+            XCTAssertEqual(cardFormView.numberField.cardBrandState.brand, .cartesBancaires)
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 3.0)
+    }
+
+    func testCBCOBO() {
+        STPAPIClient.shared.publishableKey = STPTestingDefaultPublishableKey
+        let cardFormView = STPCardFormView(billingAddressCollection: .automatic, cbcEnabledOverride: true)
+        cardFormView.onBehalfOf = "acct_abc123"
+        XCTAssertEqual((cardFormView.numberField.validator as! STPCardNumberInputTextFieldValidator).cbcController.onBehalfOf, "acct_abc123")
+    }
+
+    func testCBCFourDigitCVCIsInvalid() {
+        STPAPIClient.shared.publishableKey = STPTestingDefaultPublishableKey
+        let cardFormView = STPCardFormView(billingAddressCollection: .automatic, cbcEnabledOverride: true)
+        let cardParams = STPPaymentMethodCardParams()
+        cardParams.number = "5555552500001001"
+        cardParams.expYear = 2050
+        cardParams.expMonth = 12
+        cardParams.cvc = "1234"
+        let billingDetails = STPPaymentMethodBillingDetails(postalCode: "12345", countryCode: "US")
+        let paymentMethodParams = STPPaymentMethodParams(card: cardParams, billingDetails: billingDetails, metadata: nil)
+        cardFormView.cardParams = paymentMethodParams
+        let exp = expectation(description: "Wait for validation")
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            XCTAssertFalse(cardFormView.cvcField.isValid)
+            exp.fulfill()
+        }
+        waitForExpectations(timeout: 0.5)
     }
 
     // MARK: Functional Tests

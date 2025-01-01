@@ -19,7 +19,7 @@ class FloatingPlaceholderTextFieldView: UIView {
     // MARK: - Views
 
     private let textField: UITextField
-    private let theme: ElementsUITheme
+    private let theme: ElementsAppearance
     private lazy var placeholderLabel: UILabel = {
         let label = UILabel()
         label.textColor = theme.colors.placeholderText
@@ -38,7 +38,7 @@ class FloatingPlaceholderTextFieldView: UIView {
 
     // MARK: - Initializers
 
-    public init(textField: UITextField, theme: ElementsUITheme = .default) {
+    public init(textField: UITextField, theme: ElementsAppearance = .default) {
         self.textField = textField
         self.theme = theme
         super.init(frame: .zero)
@@ -140,7 +140,7 @@ class FloatingPlaceholderTextFieldView: UIView {
 
     public func updatePlaceholder(animated: Bool = true) {
         enum Position { case up, down }
-        let isEmpty = textField.text?.isEmpty ?? true
+        let isEmpty = textField.attributedText?.string.isEmpty ?? true
         let position: Position = textField.isEditing || !isEmpty ? .up : .down
         let scale = position == .up ? Constants.Placeholder.scale : 1.0
         let transform = CGAffineTransform.identity.scaledBy(x: scale, y: scale)

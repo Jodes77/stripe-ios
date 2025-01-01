@@ -48,8 +48,8 @@ final class DocumentUploaderTest: XCTestCase {
         height: 0.4164186508
     )
 
-    static let mockDocumentScannerOutput = DocumentScannerOutput(
-        idDetectorOutput: .init(
+    static let mockDocumentScannerOutputLegacy = DocumentScannerOutput.legacy(
+        .init(
             classification: .idCardFront,
             documentBounds: mockRegionOfInterest,
             allClassificationScores: [
@@ -59,26 +59,29 @@ final class DocumentUploaderTest: XCTestCase {
                 .invalid: 0.6,
             ]
         ),
-        barcode: .init(
+        .init(
             hasBarcode: true,
             isTimedOut: false,
             symbology: .pdf417,
             timeTryingToFindBarcode: 1
         ),
-        motionBlur: .init(
+        .init(
             hasMotionBlur: false,
             iou: nil,
             frameCount: 0,
             duration: 0
         ),
-        cameraProperties: .init(
-            exposureDuration: CMTime(value: 250, timescale: 1000),
-            cameraDeviceType: .builtInDualCamera,
-            isVirtualDevice: true,
-            lensPosition: 0.3,
-            exposureISO: 0.4,
-            isAdjustingFocus: false
-        )
+        .init(
+            .init(
+                exposureDuration: CMTime(value: 250, timescale: 1000),
+                cameraDeviceType: .builtInDualCamera,
+                isVirtualDevice: true,
+                lensPosition: 0.3,
+                exposureISO: 0.4,
+                isAdjustingFocus: false
+            )
+        ),
+        .init(isBlurry: false, variance: 0.1)
     )
 
     override class func setUp() {
@@ -95,9 +98,10 @@ final class DocumentUploaderTest: XCTestCase {
         uploader = DocumentUploader(
             imageUploader: IdentityImageUploader(
                 configuration: mockConfig,
-                apiClient: mockAPIClient,
-                analyticsClient: .init(verificationSessionId: ""),
-                idDocumentType: .passport
+                sheetController: VerificationSheetControllerMock(
+                    apiClient: mockAPIClient,
+                    analyticsClient: .init(verificationSessionId: "")
+                )
             )
         )
         mockDelegate = MockDocumentUploaderDelegate()
@@ -114,7 +118,7 @@ final class DocumentUploaderTest: XCTestCase {
         // Upload images
         uploader.uploadImages(
             mockImage,
-            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutput,
+            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutputLegacy,
             exifMetadata: mockExifData,
             method: method,
             fileNamePrefix: prefix
@@ -336,14 +340,14 @@ extension DocumentUploaderTest {
         uploader.uploadImages(
             for: .front,
             originalImage: mockImage,
-            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutput,
+            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutputLegacy,
             exifMetadata: mockExifData,
             method: .autoCapture
         )
         uploader.uploadImages(
             for: .back,
             originalImage: mockImage,
-            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutput,
+            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutputLegacy,
             exifMetadata: mockExifData,
             method: .autoCapture
         )
@@ -428,7 +432,7 @@ extension DocumentUploaderTest {
         uploader.uploadImages(
             for: side,
             originalImage: mockImage,
-            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutput,
+            documentScannerOutput: DocumentUploaderTest.mockDocumentScannerOutputLegacy,
             exifMetadata: mockExifData,
             method: .autoCapture
         )

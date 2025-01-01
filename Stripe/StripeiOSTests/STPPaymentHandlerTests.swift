@@ -76,8 +76,22 @@ class STPPaymentHandlerStubbedTests: STPNetworkStubbingTestCase {
 
         let paymentHandlerExpectation = expectation(description: "paymentHandlerExpectation")
         STPPaymentHandler.shared().checkCanPresentInTest = true
+        let analyticsClient = STPAnalyticsClient()
+        STPPaymentHandler.sharedHandler.analyticsClient = analyticsClient
         STPPaymentHandler.shared().confirmPayment(paymentIntentParams, with: self) {
             (status, paymentIntent, error) in
+            let firstAnalytic = analyticsClient._testLogHistory.first
+            XCTAssertEqual(firstAnalytic?["event"] as? String, STPAnalyticEvent.paymentHandlerConfirmStarted.rawValue)
+            XCTAssertEqual(firstAnalytic?["intent_id"] as? String, paymentIntentParams.stripeId)
+            XCTAssertEqual(firstAnalytic?["payment_method_type"] as? String, "card")
+            let lastAnalytic = analyticsClient._testLogHistory.last
+            XCTAssertEqual(lastAnalytic?["event"] as? String, STPAnalyticEvent.paymentHandlerConfirmFinished.rawValue)
+            XCTAssertEqual(lastAnalytic?["intent_id"] as? String, paymentIntentParams.stripeId)
+            XCTAssertEqual(lastAnalytic?["status"] as? String, "failed")
+            XCTAssertEqual(lastAnalytic?["payment_method_type"] as? String, "card")
+            XCTAssertEqual(lastAnalytic?["error_type"] as? String, "STPPaymentHandlerErrorDomain")
+            XCTAssertEqual(lastAnalytic?["error_code"] as? String, "requiresAuthenticationContextErrorCode")
+            XCTAssertEqual(lastAnalytic?[jsonDict: "error_details"]?["com.stripe.lib:ErrorMessageKey"] as? String, "authenticationPresentingViewController is not in the window hierarchy. You should probably return the top-most view controller instead.")
             XCTAssertTrue(status == .failed)
             XCTAssertNotNil(paymentIntent)
             XCTAssertNotNil(error)
@@ -96,6 +110,8 @@ class STPPaymentHandlerStubbedTests: STPNetworkStubbingTestCase {
 class STPPaymentHandlerTests: APIStubbedTestCase {
 
     func testPaymentHandlerRetriesWithBackoff() {
+        let oldMaxRetries = StripeAPI.maxRetries
+        StripeAPI.maxRetries = 1
         STPPaymentHandler.sharedHandler.apiClient = stubbedAPIClient()
 
         stub { urlRequest in
@@ -115,7 +131,7 @@ class STPPaymentHandlerTests: APIStubbedTestCase {
                                 "dsReferenceNumber": "3DS_LOA_DIS_PPFU_020100_00010",
                                 "acsReferenceNumber": "3DS_LOA_ACS_PPFU_020100_00009",
                                 "threeDSServerTransID": "fc7a39de-dc41-4b65-ba76-a322769b2efc",
-                                "messageVersion": "2.1.0",
+                                "messageVersion": "2.2.0",
                                 "authenticationValue": "AABBCCDDEEFFAABBCCDDEEFFAAA=",
                                 "messageType": "pArs",
                                 "transStatus": "C",
@@ -141,6 +157,15 @@ class STPPaymentHandlerTests: APIStubbedTestCase {
                     ],
             ]
             return HTTPStubsResponse(jsonObject: errorResponse, statusCode: 400, headers: nil)
+        }
+
+        // Stub the fetch SetupIntent request, which should be called after the failed challenge_complete
+        let fetchedSetupIntentExpectation = expectation(description: "Fetched SetupIntent")
+        stub { urlRequest in
+            return urlRequest.url?.absoluteString.contains("setup_intents/seti_123") ?? false
+        } response: { _ in
+            fetchedSetupIntentExpectation.fulfill()
+            return HTTPStubsResponse(jsonObject: STPTestUtils.jsonNamed("SetupIntent")!, statusCode: 400, headers: nil)
         }
 
         let paymentHandlerExpectation = expectation(
@@ -196,20 +221,21 @@ class STPPaymentHandlerTests: APIStubbedTestCase {
             boletoDisplayDetails: nil,
             verifyWithMicrodeposits: nil,
             cashAppRedirectToApp: nil,
+            payNowDisplayQrCode: nil,
+            konbiniDisplayDetails: nil,
+            promptPayDisplayQrCode: nil,
+            swishHandleRedirect: nil,
+            multibancoDisplayDetails: nil,
             allResponseFields: [:]
         )
         let setupIntent = STPSetupIntent(
             stripeID: "test",
-            clientSecret: "test",
+            clientSecret: "seti_123_secret_123",
             created: Date(),
-            countryCode: "US",
             customerID: nil,
             stripeDescription: nil,
-            linkSettings: nil,
             livemode: false,
-            merchantCountryCode: "US",
             nextAction: action,
-            orderedPaymentMethodTypes: [],
             paymentMethodID: "test",
             paymentMethod: nil,
             paymentMethodOptions: nil,
@@ -217,8 +243,7 @@ class STPPaymentHandlerTests: APIStubbedTestCase {
             status: .requiresAction,
             usage: .none,
             lastSetupError: nil,
-            allResponseFields: [:],
-            unactivatedPaymentMethodTypes: []
+            allResponseFields: [:]
         )
 
         // We expect this request to retry a few times with exponential backoff before calling the completion handler.
@@ -243,8 +268,9 @@ class STPPaymentHandlerTests: APIStubbedTestCase {
             checkedStillInProgress.fulfill()
         }
 
-        wait(for: [paymentHandlerExpectation, checkedStillInProgress], timeout: 30)
+        wait(for: [paymentHandlerExpectation, checkedStillInProgress, fetchedSetupIntentExpectation], timeout: 60)
         STPPaymentHandler.sharedHandler.apiClient = STPAPIClient.shared
+        StripeAPI.maxRetries = oldMaxRetries
     }
 }
 

@@ -8,78 +8,72 @@
 
 @_spi(STP) import StripePayments
 
-extension Intent {
+extension STPElementsSession {
     var supportsLink: Bool {
-        return recommendedPaymentMethodTypes.contains(.link)
+        // Either Link is an allowed Payment Method in the elements/sessions response, or passthrough mode (Link as a Card PM) is allowed
+        orderedPaymentMethodTypes.contains(.link) || linkPassthroughModeEnabled
+    }
+
+    var linkPassthroughModeEnabled: Bool {
+        linkSettings?.passthroughModeEnabled ?? false
     }
 
     var supportsLinkCard: Bool {
-        return supportsLink && (linkFundingSources?.contains(.card) ?? false)
+        supportsLink && (linkFundingSources?.contains(.card) ?? false) || linkPassthroughModeEnabled
     }
 
     var onlySupportsLinkBank: Bool {
         return supportsLink && (linkFundingSources == [.bankAccount])
     }
 
+    var linkFundingSources: Set<LinkSettings.FundingSource>? {
+        linkSettings?.fundingSources
+    }
+
+    var disableLinkSignup: Bool {
+        linkSettings?.disableSignup ?? false
+    }
+
+    var linkPopupWebviewOption: LinkSettings.PopupWebviewOption {
+        linkSettings?.popupWebviewOption ?? .shared
+    }
+
+    func shouldShowLink2FABeforePaymentSheet(for linkAccount: PaymentSheetLinkAccount) -> Bool {
+        return self.supportsLink &&
+        linkAccount.sessionState == .requiresVerification &&
+        !linkAccount.hasStartedSMSVerification &&
+        linkAccount.useMobileEndpoints &&
+        self.linkSettings?.suppress2FAModal != true
+    }
+
+    func countryCode(overrideCountry: String?) -> String? {
+#if DEBUG
+        if let overrideCountry {
+            return overrideCountry
+        }
+#endif
+        return countryCode
+    }
+
+    var linkFlags: [String: Bool] {
+        linkSettings?.linkFlags ?? [:]
+    }
+}
+
+extension Intent {
     var callToAction: ConfirmButton.CallToActionType {
         switch self {
         case .paymentIntent(let paymentIntent):
             return .pay(amount: paymentIntent.amount, currency: paymentIntent.currency)
         case .setupIntent:
             return .setup
-        case .deferredIntent(_, let intentConfig):
+        case .deferredIntent(let intentConfig):
             switch intentConfig.mode {
             case .payment(let amount, let currency, _, _):
                 return .pay(amount: amount, currency: currency)
             case .setup:
                 return .setup
             }
-        }
-    }
-
-    var linkFundingSources: Set<LinkSettings.FundingSource>? {
-        switch self {
-        case .paymentIntent(let paymentIntent):
-            return paymentIntent.linkSettings?.fundingSources
-        case .setupIntent(let setupIntent):
-            return setupIntent.linkSettings?.fundingSources
-        case .deferredIntent(let elementsSession, _):
-            return elementsSession.linkSettings?.fundingSources
-        }
-    }
-
-    var linkPopupWebviewOption: LinkSettings.PopupWebviewOption {
-        return {
-            switch self {
-            case .paymentIntent(let paymentIntent):
-                return paymentIntent.linkSettings?.popupWebviewOption
-            case .setupIntent(let setupIntent):
-                return setupIntent.linkSettings?.popupWebviewOption
-            case .deferredIntent(let elementsSession, _):
-                return elementsSession.linkSettings?.popupWebviewOption
-            }
-        }() ?? .shared
-    }
-
-    var countryCode: String? {
-        switch self {
-        case .paymentIntent(let paymentIntent):
-            return paymentIntent.countryCode
-        case .setupIntent(let setupIntent):
-            return setupIntent.countryCode
-        case .deferredIntent(let elementsSession, _):
-            return elementsSession.countryCode
-        }
-    }
-
-    var merchantCountryCode: String? {
-        switch self {
-        case .paymentIntent(let paymentIntent):
-            return paymentIntent.merchantCountryCode
-        case .setupIntent(let setupIntent):
-            return setupIntent.merchantCountryCode
-        case .deferredIntent(let elementsSession, _):
-            return elementsSession.merchantCountryCode
         }
     }
 }

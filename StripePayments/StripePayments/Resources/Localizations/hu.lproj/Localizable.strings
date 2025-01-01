@@ -1,4 +1,4 @@
-"AU BECS Direct Debit" = "AU BECS-beszedés";
+"AU Direct Debit" = "Ausztrál közvetlen beszedés";
 
 "Affirm" = "Affirm";
 
@@ -8,9 +8,9 @@
 
 "BLIK" = "BLIK";
 
-"Bancontact" = "Bancontact";
+"Bacs Direct Debit" = "Bacs közvetlen beszedés";
 
-"Bank" = "Bank";
+"Bancontact" = "Bancontact";
 
 "Boleto" = "Boleto";
 
@@ -28,6 +28,8 @@
 
 "Klarna" = "Klarna";
 
+"Konbini" = "Konbini";
+
 "Link" = "Link";
 
 "NetBanking" = "NetBanking";
@@ -42,11 +44,13 @@
 
 "Sofort" = "Sofort";
 
+"Swish" = "Swish";
+
 "Timed out authenticating your payment method -- try again" = "Fizetési módjának hitelesítésénél időtúllépés történt, próbálja újra.";
 
 "UPI" = "UPI";
 
-"US Bank Account" = "USA bankszámla";
+"US bank account" = "US bankszámla";
 
 "Unknown" = "Ismeretlen";
 

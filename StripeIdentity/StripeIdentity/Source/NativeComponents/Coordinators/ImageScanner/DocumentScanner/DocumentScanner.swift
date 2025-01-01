@@ -22,6 +22,10 @@ final class DocumentScanner {
     private let idDetector: IDDetector
     private let motionBlurDetector: MotionBlurDetector
     private let barcodeDetector: BarcodeDetector?
+    private let blurDetector: LaplacianBlurDetector
+    private let highResImageCropPadding: CGFloat
+    private let analyticsClient: IdentityAnalyticsClient
+    private let sheetController: VerificationSheetControllerProtocol
 
     /// Initializes a DocumentScanner with detectors.
     ///
@@ -32,16 +36,24 @@ final class DocumentScanner {
     init(
         idDetector: IDDetector,
         motionBlurDetector: MotionBlurDetector,
-        barcodeDetector: BarcodeDetector?
+        barcodeDetector: BarcodeDetector?,
+        blurDetector: LaplacianBlurDetector,
+        highResImageCropPadding: CGFloat,
+        sheetController: VerificationSheetControllerProtocol
     ) {
         self.idDetector = idDetector
         self.motionBlurDetector = motionBlurDetector
         self.barcodeDetector = barcodeDetector
+        self.blurDetector = blurDetector
+        self.highResImageCropPadding = highResImageCropPadding
+        self.analyticsClient = sheetController.analyticsClient
+        self.sheetController = sheetController
     }
 
     convenience init(
         idDetectorModel: VNCoreMLModel,
-        configuration: Configuration
+        configuration: Configuration,
+        sheetController: VerificationSheetControllerProtocol
     ) {
         self.init(
             idDetector: IDDetector(
@@ -62,7 +74,10 @@ final class DocumentScanner {
                         timeout: configuration.backIdCardBarcodeTimeout
                     )
                 )
-            }
+            },
+            blurDetector: LaplacianBlurDetector(blurThreshold: configuration.blurThreshold),
+            highResImageCropPadding: configuration.highResImageCorpPadding,
+            sheetController: sheetController
         )
     }
 }
@@ -76,15 +91,29 @@ extension DocumentScanner: ImageScanner {
 
     func scanImage(
         pixelBuffer: CVPixelBuffer,
+        sampleBuffer: CMSampleBuffer,
         cameraProperties: CameraSession.DeviceProperties?
-    ) throws -> DocumentScannerOutput? {
-        // Scan for ID Document Classification
-        guard let idDetectorOutput = try self.idDetector.scanImage(pixelBuffer: pixelBuffer) else {
-            return nil
-        }
+    ) -> Future<DocumentScannerOutput?> {
+        do {
+            // Scan for ID Document Classification
+            guard let idDetectorOutput = try self.idDetector.scanImage(pixelBuffer: pixelBuffer) else {
+                return Promise(value: nil)
+            }
 
+            // MBDetector not avaialbe, fallback to legacy
+                return scanImageLegacy(pixelBuffer: pixelBuffer, idDetectorOutput: idDetectorOutput, cameraProperties: cameraProperties)
+        } catch {
+            return Promise(error: error)
+        }
+    }
+
+    fileprivate func processCommonResults(
+        pixelBuffer: CVPixelBuffer,
+        idDetectorOutput: IDDetectorOutput,
+        cameraProperties: CameraSession.DeviceProperties?
+    ) throws -> (motionBlurOutput: MotionBlurDetector.Output, barcodeOutput: BarcodeDetectorOutput?, blurResult: LaplacianBlurDetector.Output)  {
         // Check for motion blur
-        let motionBlurOutput = self.motionBlurDetector.determineMotionBlur(
+        let motionBlurOutput = motionBlurDetector.determineMotionBlur(
             documentBounds: idDetectorOutput.documentBounds
         )
 
@@ -92,7 +121,7 @@ extension DocumentScanner: ImageScanner {
         // Otherwise, scan for a barcode if this is the back of an ID.
         var barcodeOutput: BarcodeDetectorOutput?
         if let barcodeDetector = self.barcodeDetector,
-            idDetectorOutput.classification == .idCardBack
+           idDetectorOutput.classification == .idCardBack
         {
             barcodeOutput = try barcodeDetector.scanImage(
                 pixelBuffer: pixelBuffer,
@@ -100,12 +129,39 @@ extension DocumentScanner: ImageScanner {
             )
         }
 
-        return DocumentScannerOutput(
-            idDetectorOutput: idDetectorOutput,
-            barcode: barcodeOutput,
-            motionBlur: motionBlurOutput,
-            cameraProperties: cameraProperties
-        )
+        let blurResult: LaplacianBlurDetector.Output = try {
+            let originalImage = pixelBuffer.cgImage()
+            guard let croppedImage = try originalImage?.cropping(
+                toNormalizedRegion: idDetectorOutput.documentBounds,
+                withPadding: highResImageCropPadding,
+                computationMethod: .maxImageWidthOrHeight
+            )
+            else {
+                return LaplacianBlurDetector.defaultOutput
+            }
+            return blurDetector.calculateBlurOutput(inputImage: croppedImage)
+        }()
+
+        return (motionBlurOutput, barcodeOutput, blurResult)
+    }
+
+    fileprivate func scanImageLegacy(
+        pixelBuffer: CVPixelBuffer,
+        idDetectorOutput: IDDetectorOutput,
+        cameraProperties: CameraSession.DeviceProperties?
+    ) -> Future<DocumentScannerOutput?> {
+        do {
+            let commonOutputs = try processCommonResults(pixelBuffer: pixelBuffer, idDetectorOutput: idDetectorOutput, cameraProperties: cameraProperties)
+            return Promise(value: DocumentScannerOutput.legacy(
+                idDetectorOutput,
+                commonOutputs.barcodeOutput,
+                commonOutputs.motionBlurOutput,
+                cameraProperties,
+                commonOutputs.blurResult
+            ))
+        } catch {
+            return Promise(error: error)
+        }
     }
 
     func reset() {
@@ -120,20 +176,16 @@ extension IDDetectorOutput.Classification {
     /// scanner's desired classification.
     ///
     /// - Parameters:
-    ///   - type: The desired document type
     ///   - side: The desired document side
     ///
     /// - Returns: True if this classification matches the desired classification.
     func matchesDocument(
-        type: DocumentType,
         side: DocumentSide
     ) -> Bool {
-        switch (type, side, self) {
-        case (.drivingLicense, .front, .idCardFront),
-            (.idCard, .front, .idCardFront),
-            (.drivingLicense, .back, .idCardBack),
-            (.idCard, .back, .idCardBack),
-            (.passport, _, .passport):
+        switch (side, self) {
+        case (.front, .idCardFront),
+            (.front, .passport),
+            (.back, .idCardBack):
             return true
         default:
             return false

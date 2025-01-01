@@ -1,4 +1,4 @@
-"AU BECS Direct Debit" = "Adeudo directo BECS (Australia)";
+"AU Direct Debit" = "Adeudo directo (Australia)";
 
 "Affirm" = "Affirm";
 
@@ -8,9 +8,9 @@
 
 "BLIK" = "BLIK";
 
-"Bancontact" = "Bancontact";
+"Bacs Direct Debit" = "Adeudo directo Bacs";
 
-"Bank" = "Banco";
+"Bancontact" = "Bancontact";
 
 "Boleto" = "Boleto";
 
@@ -28,6 +28,8 @@
 
 "Klarna" = "Klarna";
 
+"Konbini" = "Konbini";
+
 "Link" = "Link";
 
 "NetBanking" = "NetBanking";
@@ -42,11 +44,13 @@
 
 "Sofort" = "Sofort";
 
+"Swish" = "Swish";
+
 "Timed out authenticating your payment method -- try again" = "Se agotó el tiempo de espera para autenticar el método de pago. Vuelve a intentarlo.";
 
 "UPI" = "UPI";
 
-"US Bank Account" = "Cuenta bancaria de EE. UU.";
+"US bank account" = "Cuenta bancaria de EE. UU.";
 
 "Unknown" = "Desconocido";
 

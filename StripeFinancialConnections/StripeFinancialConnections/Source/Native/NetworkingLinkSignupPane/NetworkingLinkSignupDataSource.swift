@@ -10,17 +10,23 @@ import Foundation
 
 protocol NetworkingLinkSignupDataSource: AnyObject {
     var manifest: FinancialConnectionsSessionManifest { get }
+    var elementsSessionContext: ElementsSessionContext? { get }
     var analyticsClient: FinancialConnectionsAnalyticsClient { get }
 
     func synchronize() -> Future<FinancialConnectionsNetworkingLinkSignup>
     func lookup(emailAddress: String) -> Future<LookupConsumerSessionResponse>
-    func saveToLink(emailAddress: String, phoneNumber: String, countryCode: String) -> Future<Void>
+    func saveToLink(
+        emailAddress: String,
+        phoneNumber: String,
+        countryCode: String
+    ) -> Future<String?>
 }
 
 final class NetworkingLinkSignupDataSourceImplementation: NetworkingLinkSignupDataSource {
 
     let manifest: FinancialConnectionsSessionManifest
-    private let selectedAccountIds: [String]
+    let elementsSessionContext: ElementsSessionContext?
+    private let selectedAccounts: [FinancialConnectionsPartnerAccount]?
     private let returnURL: String?
     private let apiClient: FinancialConnectionsAPIClient
     private let clientSecret: String
@@ -28,18 +34,20 @@ final class NetworkingLinkSignupDataSourceImplementation: NetworkingLinkSignupDa
 
     init(
         manifest: FinancialConnectionsSessionManifest,
-        selectedAccountIds: [String],
+        selectedAccounts: [FinancialConnectionsPartnerAccount]?,
         returnURL: String?,
         apiClient: FinancialConnectionsAPIClient,
         clientSecret: String,
-        analyticsClient: FinancialConnectionsAnalyticsClient
+        analyticsClient: FinancialConnectionsAnalyticsClient,
+        elementsSessionContext: ElementsSessionContext?
     ) {
         self.manifest = manifest
-        self.selectedAccountIds = selectedAccountIds
+        self.selectedAccounts = selectedAccounts
         self.returnURL = returnURL
         self.apiClient = apiClient
         self.clientSecret = clientSecret
         self.analyticsClient = analyticsClient
+        self.elementsSessionContext = elementsSessionContext
     }
 
     func synchronize() -> Future<FinancialConnectionsNetworkingLinkSignup> {
@@ -60,17 +68,21 @@ final class NetworkingLinkSignupDataSourceImplementation: NetworkingLinkSignupDa
         return apiClient.consumerSessionLookup(emailAddress: emailAddress, clientSecret: clientSecret)
     }
 
-    func saveToLink(emailAddress: String, phoneNumber: String, countryCode: String) -> Future<Void> {
-        return apiClient.saveAccountsToLink(
+    func saveToLink(
+        emailAddress: String,
+        phoneNumber: String,
+        countryCode: String
+    ) -> Future<String?> {
+        return apiClient.saveAccountsToNetworkAndLink(
+            shouldPollAccounts: !manifest.shouldAttachLinkedPaymentMethod,
+            selectedAccounts: selectedAccounts,
             emailAddress: emailAddress,
             phoneNumber: phoneNumber,
             country: countryCode, // ex. "US"
-            selectedAccountIds: selectedAccountIds,
             consumerSessionClientSecret: nil,
             clientSecret: clientSecret
-        )
-        .chained { _ in
-            return Promise(value: ())
+        ).chained { (_, customSuccessPaneMessage) in
+            return Promise(value: customSuccessPaneMessage)
         }
     }
 }

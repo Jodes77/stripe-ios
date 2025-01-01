@@ -31,7 +31,6 @@ class LoadingViewController: UIViewController, BottomSheetContentViewController 
     var requiresFullScreen: Bool {
         return false
     }
-
     func didTapOrSwipeToDismiss() {
         delegate?.shouldDismiss(self)
     }

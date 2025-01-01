@@ -13,10 +13,11 @@ import UIKit
 class ConsentFooterView: HitTestView {
 
     private let agreeButtonText: String
+    private let theme: FinancialConnectionsTheme
     private let didSelectAgree: () -> Void
 
     private lazy var agreeButton: StripeUICore.Button = {
-        let agreeButton = Button(configuration: .financialConnectionsPrimary)
+        let agreeButton = Button.primary(theme: theme)
         agreeButton.title = agreeButtonText
         agreeButton.addTarget(self, action: #selector(didSelectAgreeButton), for: .touchUpInside)
         agreeButton.translatesAutoresizingMaskIntoConstraints = false
@@ -31,20 +32,22 @@ class ConsentFooterView: HitTestView {
         aboveCtaText: String,
         ctaText: String,
         belowCtaText: String?,
+        theme: FinancialConnectionsTheme,
         didSelectAgree: @escaping () -> Void,
         didSelectURL: @escaping (URL) -> Void
     ) {
         self.agreeButtonText = ctaText
+        self.theme = theme
         self.didSelectAgree = didSelectAgree
         super.init(frame: .zero)
         backgroundColor = .customBackgroundColor
 
         let termsAndPrivacyPolicyLabel = AttributedTextView(
-            font: .body(.small),
-            boldFont: .body(.smallEmphasized),
-            linkFont: .body(.smallEmphasized),
-            textColor: .textSecondary,
-            alignCenter: true
+            font: .label(.small),
+            boldFont: .label(.smallEmphasized),
+            linkFont: .label(.small),
+            textColor: .textDefault,
+            alignment: .center
         )
         termsAndPrivacyPolicyLabel.setText(
             aboveCtaText,
@@ -58,15 +61,22 @@ class ConsentFooterView: HitTestView {
             ]
         )
         verticalStackView.axis = .vertical
-        verticalStackView.spacing = 24
+        verticalStackView.spacing = 16
+        verticalStackView.isLayoutMarginsRelativeArrangement = true
+        verticalStackView.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: 16,
+            leading: 24,
+            bottom: 16,
+            trailing: 24
+        )
 
         if let belowCtaText = belowCtaText {
             let manuallyVerifyLabel = AttributedTextView(
-                font: .body(.small),
-                boldFont: .body(.smallEmphasized),
-                linkFont: .body(.smallEmphasized),
-                textColor: .textSecondary,
-                alignCenter: true
+                font: .label(.small),
+                boldFont: .label(.smallEmphasized),
+                linkFont: .label(.small),
+                textColor: .textDefault,
+                alignment: .center
             )
             manuallyVerifyLabel.setText(
                 belowCtaText,
@@ -105,6 +115,7 @@ private struct ConsentFooterViewUIViewRepresentable: UIViewRepresentable {
                 "You agree to Stripe's [Terms](https://stripe.com/legal/end-users#linked-financial-account-terms) and [Privacy Policy](https://stripe.com/privacy). [Learn more](https://stripe.com/privacy-center/legal#linking-financial-accounts)",
             ctaText: "Agree",
             belowCtaText: "[Manually verify instead](https://www.stripe.com) (takes 1-2 business days)",
+            theme: .light,
             didSelectAgree: {},
             didSelectURL: { _ in }
         )

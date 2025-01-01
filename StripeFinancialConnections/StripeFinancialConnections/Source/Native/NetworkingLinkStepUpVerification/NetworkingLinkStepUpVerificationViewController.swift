@@ -13,7 +13,14 @@ import UIKit
 protocol NetworkingLinkStepUpVerificationViewControllerDelegate: AnyObject {
     func networkingLinkStepUpVerificationViewController(
         _ viewController: NetworkingLinkStepUpVerificationViewController,
-        didCompleteVerificationWithInstitution institution: FinancialConnectionsInstitution
+        didReceiveConsumerPublishableKey consumerPublishableKey: String
+    )
+    func networkingLinkStepUpVerificationViewController(
+        _ viewController: NetworkingLinkStepUpVerificationViewController,
+        didCompleteVerificationWithInstitution institution: FinancialConnectionsInstitution?,
+        nextPane: FinancialConnectionsSessionManifest.NextPane,
+        customSuccessPaneCaption: String?,
+        customSuccessPaneSubCaption: String?
     )
     func networkingLinkStepUpVerificationViewController(
         _ viewController: NetworkingLinkStepUpVerificationViewController,
@@ -29,15 +36,12 @@ final class NetworkingLinkStepUpVerificationViewController: UIViewController {
     private let dataSource: NetworkingLinkStepUpVerificationDataSource
     weak var delegate: NetworkingLinkStepUpVerificationViewControllerDelegate?
 
-    private lazy var loadingView: ActivityIndicator = {
-        let activityIndicator = ActivityIndicator(size: .large)
-        activityIndicator.color = .textDisabled
-        activityIndicator.backgroundColor = .customBackgroundColor
-        return activityIndicator
+    private lazy var fullScreenLoadingView: UIView = {
+        return SpinnerView(theme: dataSource.manifest.theme)
     }()
     private lazy var bodyView: NetworkingLinkStepUpVerificationBodyView = {
         let bodyView = NetworkingLinkStepUpVerificationBodyView(
-            email: dataSource.consumerSession.emailAddress,
+            theme: dataSource.manifest.theme,
             otpView: otpView,
             didSelectResendCode: { [weak self] in
                 self?.didSelectResendCode()
@@ -66,7 +70,7 @@ final class NetworkingLinkStepUpVerificationViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .customBackgroundColor
 
-        otpView.lookupConsumerAndStartVerification()
+        otpView.startVerification()
     }
 
     private func handleFailure(error: Error, errorName: String) {
@@ -91,40 +95,43 @@ final class NetworkingLinkStepUpVerificationViewController: UIViewController {
     private func showContent() {
         didShowContent = true
 
-        let pane = PaneWithHeaderLayoutView(
-            title: STPLocalizedString(
-                "Check your email to confirm your identity",
-                "The title of a screen where users are asked to enter a one-time-password (OTP) that they received in their email."
+        let paneLayoutView = PaneLayoutView(
+            contentView: PaneLayoutView.createContentView(
+                iconView: nil,
+                title: STPLocalizedString(
+                    "Verify your email",
+                    "The title of a screen where users are asked to enter a one-time-password (OTP) that they received in their email."
+                ),
+                subtitle: String(
+                    format: STPLocalizedString(
+                        "Enter the code sent to %@. We periodically request this extra step to keep your account safe.",
+                        "The subtitle/description of a screen where users are asked to enter a one-time-password (OTP) that they received in their email. '%@' is replaced with an email, for example, 'test@test.com'."
+                    ), dataSource.consumerSession.emailAddress
+                ),
+                contentView: bodyView
             ),
-            subtitle: String(
-                format: STPLocalizedString(
-                    "To keep your Link account safe, we periodically need to confirm you're you. Enter the code sent to your email %@.",
-                    "The subtitle/description of a screen where users are asked to enter a one-time-password (OTP) that they received in their email. '%@' is replaced with an email, for example, 'test@test.com'."
-                ), "**\(dataSource.consumerSession.emailAddress)**" // asterisks make the e-mail bold
-            ),
-            contentView: bodyView,
             footerView: nil
         )
-        pane.addTo(view: view)
+        paneLayoutView.addTo(view: view)
     }
 
-    private func showLoadingView(_ show: Bool) {
-        if show && loadingView.superview == nil {
+    private func showFullScreenLoadingView(_ show: Bool) {
+        if show && fullScreenLoadingView.superview == nil {
             // first-time we are showing this, so add the view to hierarchy
-            view.addAndPinSubview(loadingView)
+            view.addAndPinSubview(fullScreenLoadingView)
         }
 
-        loadingView.isHidden = !show
-        if show {
-            loadingView.startAnimating()
-        } else {
-            loadingView.stopAnimating()
-        }
-        view.bringSubviewToFront(loadingView)  // defensive programming to avoid loadingView being hiddden
+        fullScreenLoadingView.isHidden = !show
+        view.bringSubviewToFront(fullScreenLoadingView)  // defensive programming to avoid loadingView being hiddden
+    }
+
+    private func showSmallLoadingView(_ showLoadingView: Bool) {
+        bodyView.showResendCodeLabel(!showLoadingView)
+        otpView.showLoadingView(showLoadingView)
     }
 
     private func didSelectResendCode() {
-        otpView.lookupConsumerAndStartVerification()
+        otpView.startVerification()
     }
 }
 
@@ -132,19 +139,23 @@ final class NetworkingLinkStepUpVerificationViewController: UIViewController {
 
 extension NetworkingLinkStepUpVerificationViewController: NetworkingOTPViewDelegate {
 
+    func networkingOTPView(_ view: NetworkingOTPView, didGetConsumerPublishableKey consumerPublishableKey: String) {
+        delegate?.networkingLinkStepUpVerificationViewController(self, didReceiveConsumerPublishableKey: consumerPublishableKey)
+    }
+
     func networkingOTPViewWillStartConsumerLookup(_ view: NetworkingOTPView) {
         if !didShowContent {
-            showLoadingView(true)
+            showFullScreenLoadingView(true)
         } else {
-            bodyView.isResendingCode(true)
+            showSmallLoadingView(true)
         }
     }
 
     func networkingOTPViewConsumerNotFound(_ view: NetworkingOTPView) {
-        // side-note: it is redundant to call `showLoadingView` & `isResendingCode` because
+        // side-note: it is redundant to call `showLoadingView` & `showSmallLoadingView` because
         // usually only one needs to be hidden, but this keeps the code simple
-        showLoadingView(false)
-        bodyView.isResendingCode(false)
+        showFullScreenLoadingView(false)
+        showSmallLoadingView(false)
 
         dataSource.analyticsClient.log(
             eventName: "networking.verification.step_up.error",
@@ -159,8 +170,8 @@ extension NetworkingLinkStepUpVerificationViewController: NetworkingOTPViewDeleg
     func networkingOTPView(_ view: NetworkingOTPView, didFailConsumerLookup error: Error) {
         // side-note: it is redundant to call both (`showLoadingView` & `isResendingCode`) because
         // only one needs to be hidden (depends on the state), but this keeps the code simple
-        showLoadingView(false)
-        bodyView.isResendingCode(false)
+        showFullScreenLoadingView(false)
+        showSmallLoadingView(false)
 
         handleFailure(error: error, errorName: "LookupConsumerSessionError")
     }
@@ -172,24 +183,29 @@ extension NetworkingLinkStepUpVerificationViewController: NetworkingOTPViewDeleg
     func networkingOTPView(_ view: NetworkingOTPView, didStartVerification consumerSession: ConsumerSessionData) {
         // it's important to call this BEFORE we call `showContent` because of `didShowContent`
         if !didShowContent {
-            showLoadingView(false)
+            showFullScreenLoadingView(false)
         } else {
-            bodyView.isResendingCode(false)
+            showSmallLoadingView(false)
         }
 
         showContent()
     }
 
     func networkingOTPView(_ view: NetworkingOTPView, didFailToStartVerification error: Error) {
-        // side-note: it is redundant to call `showLoadingView` & `isResendingCode` because
+        // side-note: it is redundant to call `showLoadingView` & `showSmallLoadingView` because
         // usually only one needs to be hidden, but this keeps the code simple
-        showLoadingView(false)
-        bodyView.isResendingCode(false)
+        showFullScreenLoadingView(false)
+        showSmallLoadingView(false)
 
         handleFailure(error: error, errorName: "StartVerificationSessionError")
     }
 
+    func networkingOTPViewWillConfirmVerification(_ view: NetworkingOTPView) {
+        showSmallLoadingView(true)
+    }
+
     func networkingOTPViewDidConfirmVerification(_ view: NetworkingOTPView) {
+        showSmallLoadingView(true)
         dataSource.markLinkStepUpAuthenticationVerified()
             .observe { [weak self] result in
                 guard let self = self else { return }
@@ -205,7 +221,7 @@ extension NetworkingLinkStepUpVerificationViewController: NetworkingOTPViewDeleg
                         .observe { [weak self] result in
                             guard let self = self else { return }
                             switch result {
-                            case .success(let institutionList):
+                            case .success(let response):
                                 self.dataSource
                                     .analyticsClient
                                     .log(
@@ -213,15 +229,23 @@ extension NetworkingLinkStepUpVerificationViewController: NetworkingOTPViewDeleg
                                         pane: .networkingLinkStepUpVerification
                                     )
 
-                                if let institution = institutionList.data.first {
-                                    self.delegate?.networkingLinkStepUpVerificationViewController(
-                                        self,
-                                        didCompleteVerificationWithInstitution: institution
-                                    )
-                                } else {
-                                    // this shouldn't happen, but in case it does, we navigate to `institutionPicker` so user
-                                    // could still have a chance at successfully connecting their account
-                                    self.delegate?.networkingLinkStepUpVerificationViewControllerEncounteredSoftError(self)
+                                let nextPane = response.nextPane ?? .success
+                                let successPane = response.displayText?.text?.succcessPane
+                                self.delegate?.networkingLinkStepUpVerificationViewController(
+                                    self,
+                                    // networking manual entry will not return an institution
+                                    didCompleteVerificationWithInstitution: response.data.first,
+                                    nextPane: nextPane,
+                                    customSuccessPaneCaption: successPane?.caption,
+                                    customSuccessPaneSubCaption: successPane?.subCaption
+                                )
+
+                                // only hide loading view after animation
+                                // to next screen has completed
+                                DispatchQueue.main.asyncAfter(
+                                    deadline: .now() + 1.0
+                                ) { [weak self] in
+                                    self?.showSmallLoadingView(false)
                                 }
                             case .failure(let error):
                                 self.dataSource
@@ -253,7 +277,18 @@ extension NetworkingLinkStepUpVerificationViewController: NetworkingOTPViewDeleg
             }
     }
 
-    func networkingOTPView(_ view: NetworkingOTPView, didTerminallyFailToConfirmVerification error: Error) {
-        delegate?.networkingLinkStepUpVerificationViewController(self, didReceiveTerminalError: error)
+    func networkingOTPView(
+        _ view: NetworkingOTPView,
+        didFailToConfirmVerification error: Error,
+        isTerminal: Bool
+    ) {
+        showSmallLoadingView(false)
+
+        if isTerminal {
+            delegate?.networkingLinkStepUpVerificationViewController(
+                self,
+                didReceiveTerminalError: error
+            )
+        }
     }
 }

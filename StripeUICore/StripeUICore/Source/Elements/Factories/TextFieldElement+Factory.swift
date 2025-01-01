@@ -22,6 +22,7 @@ import UIKit
         public let defaultValue: String?
         public let label: String
         public let isOptional: Bool
+        public let isEditable: Bool
         private var textContentType: UITextContentType {
             switch type {
             case .given:
@@ -34,7 +35,7 @@ import UIKit
         }
 
         /// - Parameter label: If `nil`, defaults to a string on the `type` e.g. "Name"
-        public init(type: NameType = .full, defaultValue: String?, label: String? = nil, isOptional: Bool = false) {
+        public init(type: NameType = .full, defaultValue: String?, label: String? = nil, isOptional: Bool = false, isEditable: Bool = true) {
             self.type = type
             self.defaultValue = defaultValue
             if let label = label {
@@ -43,6 +44,7 @@ import UIKit
                 self.label = Self.label(for: type)
             }
             self.isOptional = isOptional
+            self.isEditable = isEditable
         }
 
         public func keyboardProperties(for text: String) -> TextFieldElement.KeyboardProperties {
@@ -63,7 +65,7 @@ import UIKit
         }
     }
 
-    static func makeName(label: String? = nil, defaultValue: String?, theme: ElementsUITheme = .default) -> TextFieldElement {
+    static func makeName(label: String? = nil, defaultValue: String?, theme: ElementsAppearance = .default) -> TextFieldElement {
         return TextFieldElement(configuration: NameConfiguration(type: .full, defaultValue: defaultValue, label: label), theme: theme)
     }
 
@@ -72,10 +74,18 @@ import UIKit
     struct EmailConfiguration: TextFieldElementConfiguration {
         public let label = String.Localized.email
         public let defaultValue: String?
+        public let isOptional: Bool
+        public let isEditable: Bool
         public let disallowedCharacters: CharacterSet = .whitespacesAndNewlines
         let invalidError = Error.invalid(
             localizedDescription: String.Localized.invalid_email
         )
+
+        public init(defaultValue: String? = nil, isOptional: Bool = false, isEditable: Bool = true) {
+            self.defaultValue = defaultValue
+            self.isOptional = isOptional
+            self.isEditable = isEditable
+        }
 
         public func validate(text: String, isOptional: Bool) -> ValidationState {
             if text.isEmpty {
@@ -93,8 +103,9 @@ import UIKit
         }
     }
 
-    static func makeEmail(defaultValue: String?, theme: ElementsUITheme = .default) -> TextFieldElement {
-        return TextFieldElement(configuration: EmailConfiguration(defaultValue: defaultValue), theme: theme)
+    static func makeEmail(defaultValue: String?, isOptional: Bool = false, theme: ElementsAppearance = .default) -> TextFieldElement {
+        return TextFieldElement(configuration: EmailConfiguration(defaultValue: defaultValue,
+                                                                  isOptional: isOptional), theme: theme)
     }
 
     // MARK: VPA
@@ -120,7 +131,7 @@ import UIKit
 
     }
 
-    static func makeVPA(theme: ElementsUITheme = .default) -> TextFieldElement {
+    static func makeVPA(theme: ElementsAppearance = .default) -> TextFieldElement {
         return TextFieldElement(configuration: VPAConfiguration(), theme: theme)
     }
 
@@ -128,6 +139,7 @@ import UIKit
     struct BlikCodeConfiguration: TextFieldElementConfiguration {
         public let label = String.Localized.blik_code
         public let disallowedCharacters: CharacterSet = .decimalDigits.inverted
+        public let defaultValue: String?
         let invalidError = Error.invalid(
             localizedDescription: .Localized.invalid_blik_code
         )
@@ -148,15 +160,47 @@ import UIKit
         }
     }
 
-    static func makeBlikCode(theme: ElementsUITheme = .default) -> TextFieldElement {
-        return TextFieldElement(configuration: BlikCodeConfiguration(), theme: theme)
+    static func makeBlikCode(defaultValue: String?, theme: ElementsAppearance) -> TextFieldElement {
+        return TextFieldElement(configuration: BlikCodeConfiguration(defaultValue: defaultValue), theme: theme)
+    }
+
+    // MARK: - Konbini confirmation/phone number
+
+    /// An optional 10 to 11 digit numeric-only string determining the confirmation code at applicable convenience stores. This is typically a phone number, so we label it as such.
+    struct KonbiniPhoneNumberConfiguration: TextFieldElementConfiguration {
+        public let label = String.Localized.phoneNumber
+        public let disallowedCharacters: CharacterSet = .decimalDigits.inverted
+        public let isOptional: Bool = true
+        let incompleteError = Error.incomplete(localizedDescription: .Localized.incomplete_phone_number)
+
+        public func validate(text: String, isOptional: Bool) -> ValidationState {
+            guard !text.isEmpty else {
+                return isOptional ? .valid : .invalid(Error.empty)
+            }
+            guard text.count > 9 else {
+                return .invalid(incompleteError)
+            }
+            return .valid
+        }
+
+        public func keyboardProperties(for text: String) -> TextFieldElement.KeyboardProperties {
+            return .init(type: .numberPad, textContentType: .telephoneNumber, autocapitalization: .none)
+        }
+
+        public func maxLength(for text: String) -> Int {
+            return 11
+        }
+    }
+
+    static func makeKonbini(theme: ElementsAppearance) -> TextFieldElement {
+        return TextFieldElement(configuration: KonbiniPhoneNumberConfiguration(), theme: theme)
     }
 
     // MARK: - Phone number
     struct PhoneNumberConfiguration: TextFieldElementConfiguration {
         static let incompleteError = Error.incomplete(localizedDescription: .Localized.incomplete_phone_number)
         static let invalidError = Error.invalid(localizedDescription: .Localized.invalid_phone_number)
-        public let label: String = .Localized.phone
+        public let label: String = .Localized.phoneNumber
         /// - Note: Country code helps us format the phone number
         public let countryCodeProvider: () -> String
         public let defaultValue: String?
@@ -199,4 +243,5 @@ import UIKit
             }
         }
     }
+
 }

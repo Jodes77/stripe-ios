@@ -9,34 +9,35 @@ import Foundation
 @_spi(STP) import StripeCore
 
 protocol NetworkingLinkStepUpVerificationDataSource: AnyObject {
+    var manifest: FinancialConnectionsSessionManifest { get }
     var consumerSession: ConsumerSessionData { get }
     var analyticsClient: FinancialConnectionsAnalyticsClient { get }
     var networkingOTPDataSource: NetworkingOTPDataSource { get }
 
     func markLinkStepUpAuthenticationVerified() -> Future<FinancialConnectionsSessionManifest>
-    func selectNetworkedAccount() -> Future<FinancialConnectionsInstitutionList>
+    func selectNetworkedAccount() -> Future<ShareNetworkedAccountsResponse>
 }
 
 final class NetworkingLinkStepUpVerificationDataSourceImplementation: NetworkingLinkStepUpVerificationDataSource {
 
     private(set) var consumerSession: ConsumerSessionData
-    private let selectedAccountId: String
-    private let manifest: FinancialConnectionsSessionManifest
+    private let selectedAccountIds: [String]
     private let apiClient: FinancialConnectionsAPIClient
     private let clientSecret: String
+    let manifest: FinancialConnectionsSessionManifest
     let analyticsClient: FinancialConnectionsAnalyticsClient
     let networkingOTPDataSource: NetworkingOTPDataSource
 
     init(
         consumerSession: ConsumerSessionData,
-        selectedAccountId: String,
+        selectedAccountIds: [String],
         manifest: FinancialConnectionsSessionManifest,
         apiClient: FinancialConnectionsAPIClient,
         clientSecret: String,
         analyticsClient: FinancialConnectionsAnalyticsClient
     ) {
         self.consumerSession = consumerSession
-        self.selectedAccountId = selectedAccountId
+        self.selectedAccountIds = selectedAccountIds
         self.manifest = manifest
         self.apiClient = apiClient
         self.clientSecret = clientSecret
@@ -47,10 +48,12 @@ final class NetworkingLinkStepUpVerificationDataSourceImplementation: Networking
             customEmailType: "NETWORKED_CONNECTIONS_OTP_EMAIL",
             connectionsMerchantName: manifest.businessName,
             pane: .networkingLinkStepUpVerification,
-            consumerSession: nil,
+            consumerSession: consumerSession,
             apiClient: apiClient,
             clientSecret: clientSecret,
-            analyticsClient: analyticsClient
+            analyticsClient: analyticsClient,
+            isTestMode: manifest.isTestMode,
+            theme: manifest.theme
         )
         self.networkingOTPDataSource = networkingOTPDataSource
         networkingOTPDataSource.delegate = self
@@ -60,11 +63,12 @@ final class NetworkingLinkStepUpVerificationDataSourceImplementation: Networking
         return apiClient.markLinkStepUpAuthenticationVerified(clientSecret: clientSecret)
     }
 
-    func selectNetworkedAccount() -> Future<FinancialConnectionsInstitutionList> {
+    func selectNetworkedAccount() -> Future<ShareNetworkedAccountsResponse> {
         return apiClient.selectNetworkedAccounts(
-            selectedAccountIds: [selectedAccountId],
+            selectedAccountIds: selectedAccountIds,
             clientSecret: clientSecret,
-            consumerSessionClientSecret: consumerSession.clientSecret
+            consumerSessionClientSecret: consumerSession.clientSecret,
+            consentAcquired: nil
         )
     }
 }

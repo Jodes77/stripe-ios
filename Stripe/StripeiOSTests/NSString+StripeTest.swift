@@ -65,7 +65,14 @@ class NSString_StripeTest: XCTestCase {
     }
 
     func testLocalizedAmountDisplayString() {
-        XCTAssertEqual(String.localizedAmountDisplayString(for: 1099, currency: "USD"), "$10.99")
+        XCTAssertEqual(String.localizedAmountDisplayString(
+                for: 1099,
+                currency: "USD",
+                locale: Locale(identifier: "en_US")
+            ),
+            "$10.99"
+        )
+
         XCTAssertEqual(
             String.localizedAmountDisplayString(
                 for: 1099,
@@ -90,6 +97,24 @@ class NSString_StripeTest: XCTestCase {
                 locale: Locale(identifier: "z")
             ),
             "ZZZ 10.99"
+        )
+
+        XCTAssertEqual(
+            String.localizedAmountDisplayString(
+                for: 1000,
+                currency: "IDR",
+                locale: Locale(identifier: "en_US")
+            ),
+            "IDR 10"
+        )
+
+        XCTAssertEqual(
+            String.localizedAmountDisplayString(
+                for: 199400,
+                currency: "ISK",
+                locale: Locale(identifier: "en_US")
+            ),
+            "ISK 1,994"
         )
     }
 }

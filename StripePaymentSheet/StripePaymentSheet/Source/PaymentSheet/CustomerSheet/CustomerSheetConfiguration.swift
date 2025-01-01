@@ -59,6 +59,33 @@ extension CustomerSheet {
         /// Optional configuration to display a custom message when a saved payment method is removed.
         public var removeSavedPaymentMethodMessage: String?
 
+        /// The list of preferred networks that should be used to process payments made with a co-branded card.
+        /// This value will only be used if your user hasn't selected a network themselves.
+        public var preferredNetworks: [STPCardBrand]? {
+            didSet {
+                guard let preferredNetworks = preferredNetworks else { return }
+                assert(Set<STPCardBrand>(preferredNetworks).count == preferredNetworks.count,
+                       "preferredNetworks must not contain any duplicate card brands")
+            }
+        }
+
+        /// This is an experimental feature that may be removed at any time.
+        /// If true (the default), the customer can delete all saved payment methods.
+        /// If false, the customer can't delete if they only have one saved payment method remaining.
+        @_spi(STP) public var allowsRemovalOfLastSavedPaymentMethod = true
+
+        /// By default, CustomerSheet will accept all supported cards by Stripe.
+        /// You can specify card brands CustomerSheet should block disallow or allow payment for by providing an array of those card brands.
+        /// Note: For Apple Pay, the list of supported card brands is determined by combining `StripeAPI.supportedPKPaymentNetworks()` with `StripeAPI.additionalEnabledApplePayNetworks` and then applying the `cardBrandAcceptance` filter. This filtered list is then assigned to `PKPaymentRequest.supportedNetworks`, ensuring that only the allowed card brands are available for Apple Pay transactions. Any `PKPaymentNetwork` that does not correspond to a `BrandCategory` will be blocked if you have specified an allow list, or will not be blocked if you have specified a disallow list.
+        /// Note: This is only a client-side solution.
+        /// Note: Card brand filtering is not currently supported by Link.
+        @_spi(CardBrandFilteringBeta) public var cardBrandAcceptance: PaymentSheet.CardBrandAcceptance = .all
+
+        /// This is an experimental feature that may be removed at any time.
+        /// If true, users can set a payment method as default and sync their default payment method across web and mobile
+        /// If false (default), users cannot set default payment methods.
+        @_spi(AllowsSetAsDefaultPM) public var allowsSetAsDefaultPM = false
+
         public init () {
         }
     }
@@ -110,5 +137,14 @@ extension CustomerSheet {
                 return .stripeId(paymentMethod.stripeId)
             }
         }
+    }
+}
+
+extension CustomerSheet.Configuration {
+    func isUsingBillingAddressCollection() -> Bool {
+        return billingDetailsCollectionConfiguration.name == .always
+        || billingDetailsCollectionConfiguration.phone == .always
+        || billingDetailsCollectionConfiguration.email == .always
+        || billingDetailsCollectionConfiguration.address == .full
     }
 }

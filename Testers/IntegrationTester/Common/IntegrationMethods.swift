@@ -13,7 +13,6 @@ public enum IntegrationMethod: String, CaseIterable {
     case cardSetupIntents = "Card (SetupIntents)"
     case applePay = "Apple Pay"
     case sofort = "Sofort"
-    case fpx = "FPX"
     case sepaDebit = "SEPA Debit"
     case iDEAL
     case alipay = "Alipay"
@@ -27,16 +26,14 @@ public enum IntegrationMethod: String, CaseIterable {
     case oxxo = "OXXO"
     case afterpay = "Afterpay Clearpay"
     case weChatPay = "WeChat Pay"
+    case klarna = "Klarna"
+    case paypal = "PayPal"
 }
 
 // MARK: IntegrationMethod PaymentMethod/Sources Params
 extension IntegrationMethod {
   public var defaultPaymentMethodParams: STPPaymentMethodParams {
       switch self {
-      case .fpx:
-          let fpx = STPPaymentMethodFPXParams()
-          fpx.bank = .HSBC
-          return STPPaymentMethodParams(fpx: fpx, billingDetails: nil, metadata: nil)
       case .iDEAL:
           let ideal = STPPaymentMethodiDEALParams()
           return STPPaymentMethodParams(iDEAL: ideal, billingDetails: nil, metadata: nil)
@@ -98,6 +95,12 @@ extension IntegrationMethod {
       case .applePay:
           assertionFailure("Not supported by PaymentMethods")
           return STPPaymentMethodParams()
+      case .klarna:
+          let klarna = STPPaymentMethodKlarnaParams()
+          return STPPaymentMethodParams(klarna: klarna, billingDetails: Self.defaultBillingDetails, metadata: nil)
+      case .paypal:
+          let paypal = STPPaymentMethodPayPalParams()
+          return STPPaymentMethodParams(payPal: paypal, billingDetails: nil, metadata: nil)
       }
   }
 

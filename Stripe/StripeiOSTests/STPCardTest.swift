@@ -23,8 +23,12 @@ class STPCardTest: XCTestCase {
         XCTAssertEqual(STPCard.brand(from: "visa"), .visa)
         XCTAssertEqual(STPCard.brand(from: "VISA"), .visa)
 
+        XCTAssertEqual(STPCard.brand(from: "amex"), .amex)
+        XCTAssertEqual(STPCard.brand(from: "AMEX"), .amex)
         XCTAssertEqual(STPCard.brand(from: "american express"), .amex)
         XCTAssertEqual(STPCard.brand(from: "AMERICAN EXPRESS"), .amex)
+        XCTAssertEqual(STPCard.brand(from: "american_express"), .amex)
+        XCTAssertEqual(STPCard.brand(from: "AMERICAN_EXPRESS"), .amex)
 
         XCTAssertEqual(STPCard.brand(from: "mastercard"), .mastercard)
         XCTAssertEqual(STPCard.brand(from: "MASTERCARD"), .mastercard)
@@ -37,9 +41,17 @@ class STPCardTest: XCTestCase {
 
         XCTAssertEqual(STPCard.brand(from: "diners club"), .dinersClub)
         XCTAssertEqual(STPCard.brand(from: "DINERS CLUB"), .dinersClub)
+        XCTAssertEqual(STPCard.brand(from: "diners"), .dinersClub)
+        XCTAssertEqual(STPCard.brand(from: "DINERS"), .dinersClub)
+        XCTAssertEqual(STPCard.brand(from: "diners_club"), .dinersClub)
+        XCTAssertEqual(STPCard.brand(from: "DINERS_CLUB"), .dinersClub)
 
         XCTAssertEqual(STPCard.brand(from: "unionpay"), .unionPay)
         XCTAssertEqual(STPCard.brand(from: "UNIONPAY"), .unionPay)
+
+        XCTAssertEqual(STPCard.brand(from: "cartes bancaires"), .cartesBancaires)
+        XCTAssertEqual(STPCard.brand(from: "CARTES Bancaires"), .cartesBancaires)
+        XCTAssertEqual(STPCard.brand(from: "CARTES_Bancaires"), .cartesBancaires)
 
         XCTAssertEqual(STPCard.brand(from: "unknown"), .unknown)
         XCTAssertEqual(STPCard.brand(from: "UNKNOWN"), .unknown)
@@ -203,20 +215,15 @@ class STPCardTest: XCTestCase {
         XCTAssertEqual(card.address?.state, "PA")
         XCTAssertEqual(card.address?.postalCode, "19219")
 
-        // #pragma clang diagnostic push
-        // #pragma clang diagnostic ignored "-Wdeprecated"
+        XCTAssertEqual(card.perform(NSSelectorFromString("cardId")).takeUnretainedValue() as? NSString, "card_103kbR2eZvKYlo2CDczLmw4K")
 
-        XCTAssertEqual(card.cardId, "card_103kbR2eZvKYlo2CDczLmw4K")
-
-        XCTAssertEqual(card.addressCity, "Pittsburgh")
-        XCTAssertEqual(card.addressCountry, "US")
-        XCTAssertEqual(card.addressLine1, "123 Fake St")
-        XCTAssertEqual(card.addressLine2, "Apt 1")
-        XCTAssertEqual(card.addressState, "PA")
-        XCTAssertEqual(card.addressZip, "19219")
-        XCTAssertNil(card.metadata)
-
-        // #pragma clang diagnostic pop
+        XCTAssertEqual(card.perform(NSSelectorFromString("addressCity")).takeUnretainedValue() as? NSString, "Pittsburgh")
+        XCTAssertEqual(card.perform(NSSelectorFromString("addressCountry")).takeUnretainedValue() as? NSString, "US")
+        XCTAssertEqual(card.perform(NSSelectorFromString("addressLine1")).takeUnretainedValue() as? NSString, "123 Fake St")
+        XCTAssertEqual(card.perform(NSSelectorFromString("addressLine2")).takeUnretainedValue() as? NSString, "Apt 1")
+        XCTAssertEqual(card.perform(NSSelectorFromString("addressState")).takeUnretainedValue() as? NSString, "PA")
+        XCTAssertEqual(card.perform(NSSelectorFromString("addressZip")).takeUnretainedValue() as? NSString, "19219")
+        XCTAssertNil(card.perform(NSSelectorFromString("metadata")))
 
         XCTAssertEqual(card.brand, .visa)
         XCTAssertEqual(card.country, "US")
@@ -235,12 +242,6 @@ class STPCardTest: XCTestCase {
     func testStripeID() {
         let card = STPFixtures.card()
         XCTAssertEqual(card.stripeID, "card_103kbR2eZvKYlo2CDczLmw4K")
-    }
-
-    // MARK: - STPPaymentOption Tests
-    func testLabel() {
-        let card = STPCard.decodedObject(fromAPIResponse: STPTestUtils.jsonNamed("Card"))!
-        XCTAssertEqual(card.label, "Visa 4242")
     }
 
     // MARK: -

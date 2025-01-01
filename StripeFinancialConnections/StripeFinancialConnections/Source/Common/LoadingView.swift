@@ -11,6 +11,8 @@ import UIKit
 
 class LoadingView: UIView {
 
+    private let theme: FinancialConnectionsTheme?
+
     // MARK: - Subview Properties
 
     private lazy var errorLabel: UILabel = {
@@ -22,7 +24,7 @@ class LoadingView: UIView {
         label.textAlignment = .center
         label.numberOfLines = 0
         label.font = Styling.errorLabelFont
-        label.textColor = .textPrimary
+        label.textColor = .textDefault
         return label
     }()
 
@@ -44,25 +46,22 @@ class LoadingView: UIView {
         return stackView
     }()
 
-    internal let activityIndicatorView: UIActivityIndicatorView = {
-        let activityIndicatorView = UIActivityIndicatorView()
-        activityIndicatorView.style = .large
-        return activityIndicatorView
+    private lazy var spinnerView = {
+        SpinnerView(theme: theme, shouldStartAnimating: false)
     }()
 
     // MARK: - Init
 
-    override init(frame: CGRect) {
+    init(frame: CGRect, theme: FinancialConnectionsTheme?) {
+        self.theme = theme
         super.init(frame: frame)
 
         errorView.addArrangedSubview(errorLabel)
         errorView.addArrangedSubview(tryAgainButton)
         addSubview(errorView)
-        addSubview(activityIndicatorView)
 
         // Add constraints
         errorView.translatesAutoresizingMaskIntoConstraints = false
-        activityIndicatorView.translatesAutoresizingMaskIntoConstraints = false
 
         tryAgainButton.setContentHuggingPriority(.required, for: .vertical)
         tryAgainButton.setContentCompressionResistancePriority(.required, for: .vertical)
@@ -70,14 +69,22 @@ class LoadingView: UIView {
         errorLabel.setContentCompressionResistancePriority(.required, for: .vertical)
 
         NSLayoutConstraint.activate([
-            // Center activity indicator
-            activityIndicatorView.centerYAnchor.constraint(equalTo: centerYAnchor),
-            activityIndicatorView.centerXAnchor.constraint(equalTo: centerXAnchor),
-
             // Pin error view to top
             errorView.centerYAnchor.constraint(equalTo: centerYAnchor),
             errorView.centerXAnchor.constraint(equalTo: centerXAnchor),
         ])
+
+        addAndPinSubview(spinnerView)
+        showLoading(false)
+    }
+
+    func showLoading(_ showLoading: Bool) {
+        spinnerView.isHidden = !showLoading
+        if showLoading {
+            spinnerView.startAnimating()
+        } else {
+            spinnerView.stopAnimating()
+        }
     }
 
     required init?(coder: NSCoder) {

@@ -3,11 +3,12 @@ Pod::Spec.new do |s|
 
     # Do not update s.version directly.
     # Instead, update the VERSION file and run ./ci_scripts/update_version.sh
-    s.version                        = '23.14.0'
+    s.version                        = '24.2.0'
 
     s.summary                        = 'Securely connect financial accounts to Stripe\'s merchant account.'
     s.license                        = { :type => 'MIT', :file => 'LICENSE' }
     s.homepage                       = 'https://stripe.com/docs/mobile/ios'
+    s.readme                         = 'StripeFinancialConnections/README.md'
     s.authors                        = { 'Stripe' => 'support+github@stripe.com' }
     s.source                         = { :git => 'https://github.com/stripe/stripe-ios.git', :tag => "#{s.version}" }
     s.frameworks                     = 'Foundation', 'WebKit', 'UIKit'
@@ -19,5 +20,5 @@ Pod::Spec.new do |s|
     s.dependency   'StripeCore', "#{s.version}"
     s.dependency   'StripeUICore', "#{s.version}"
     s.source_files                   = 'StripeFinancialConnections/StripeFinancialConnections/**/*.swift'
-    s.ios.resource_bundle            = { 'StripeFinancialConnections' => 'StripeFinancialConnections/StripeFinancialConnections/Resources/**/*.{lproj,png}' }
+    s.ios.resource_bundle            = { 'StripeFinancialConnectionsBundle' => ['StripeFinancialConnections/StripeFinancialConnections/Resources/**/*.{lproj,png}', 'StripeFinancialConnections/StripeFinancialConnections/PrivacyInfo.xcprivacy'] }
 end

@@ -53,8 +53,16 @@ import UIKit
         )
     }
 
+    lazy var cbcIndicatorView: UIImageView = {
+        let view = UIImageView(image: Image.icon_chevron_down.makeImage(template: true))
+        view.tintColor = .placeholderText
+        return view
+    }()
+
+    var cbcIndicatorSizeConstraint: NSLayoutConstraint?
+
     /// Card brand to display.
-    @_spi(STP) public var cardBrand: STPCardBrand = .unknown {
+    var cardBrandState: STPCBCController.BrandState = .unknown {
         didSet {
             updateIcon()
         }
@@ -65,6 +73,19 @@ import UIKit
 
     /// If `true`, will center the card brand icon horizontally in the containing view
     let centerHorizontally: Bool
+
+    /// If `true`, show a CBC indicator arrow
+    var isShowingCBCIndicator: Bool = false {
+        didSet {
+            if oldValue != isShowingCBCIndicator {
+                // Gross, but we need to reach up to our top nested UIStackView to relayout with the new intrinsicContentSize:
+                self.superview?.superview?.setNeedsLayout()
+                self.invalidateIntrinsicContentSize()
+                cbcIndicatorView.isHidden = !isShowingCBCIndicator
+                self.cbcIndicatorSizeConstraint?.constant = isShowingCBCIndicator ? 9.0 : 0
+            }
+        }
+    }
 
     @_spi(STP) public override var intrinsicContentSize: CGSize {
         return size(for: Self.targetIconSize)
@@ -83,10 +104,15 @@ import UIKit
             targetSize.height
             / (Self.legacyIconSize.height - Self.iconPadding.top - Self.iconPadding.bottom)
         // We could adapt this for multiple screens, but probably not worth it (better solution is to remove padding from images)
+        #if canImport(CompositorServices)
+        let screenScale = 1.0
+        #else
         let screenScale = UIScreen.main.scale
+        #endif
+        let extraWidth = isShowingCBCIndicator ? 9.0 : 0
         return CGSize(
             width: (round(Self.legacyIconSize.width * scaleX * screenScale) / screenScale)
-                + padding.right + padding.left,
+            + padding.right + padding.left + extraWidth,
             height: (round(Self.legacyIconSize.height * scaleY * screenScale) / screenScale)
                 + padding.top + padding.bottom
         )
@@ -101,7 +127,6 @@ import UIKit
 
     /// Creates and returns an initialized card brand view.
     /// - Parameter showCVC: Whether or not to show the CVC hint icon instead of the card brand image.
-    /// - Parameter centerHorizontally: Whether or not the card icon should be centered horizontally
     @_spi(STP) public init(
         showCVC: Bool = false,
         centerHorizontally: Bool = false
@@ -112,6 +137,13 @@ import UIKit
 
         addSubview(imageView)
         imageView.translatesAutoresizingMaskIntoConstraints = false
+
+        addSubview(cbcIndicatorView)
+        cbcIndicatorView.translatesAutoresizingMaskIntoConstraints = false
+
+        cbcIndicatorView.isHidden = true
+        let cbcIndicatorSizeConstraint = cbcIndicatorView.widthAnchor.constraint(equalToConstant: 0)
+        cbcIndicatorSizeConstraint.priority = .required
 
         NSLayoutConstraint.activate([
             imageView.topAnchor.constraint(equalTo: self.topAnchor, constant: centeringPadding.top),
@@ -124,11 +156,23 @@ import UIKit
                 constant: centeringPadding.left
             ),
             imageView.rightAnchor.constraint(
+                equalTo: cbcIndicatorView.leftAnchor,
+                constant: centeringPadding.right
+            ),
+            cbcIndicatorView.rightAnchor.constraint(
                 equalTo: self.rightAnchor,
                 constant: centeringPadding.right
             ),
+            cbcIndicatorView.centerYAnchor.constraint(
+                equalTo: self.centerYAnchor
+            ),
+            cbcIndicatorView.heightAnchor.constraint(
+                equalToConstant: 9.0
+            ),
+            cbcIndicatorSizeConstraint,
         ])
 
+        self.cbcIndicatorSizeConstraint = cbcIndicatorSizeConstraint
         updateIcon()
     }
 
@@ -138,14 +182,21 @@ import UIKit
         fatalError("init(coder:) has not been implemented")
     }
 
+    @_spi(STP) public func setCardBrand(_ brand: STPCardBrand) {
+        setCardBrand(.brand(brand), animated: false)
+    }
+
     /// Updates the card brand, optionally animating the transition.
     /// - Parameters:
-    ///   - newBrand: New card brand.
+    ///   - newBrandState: New card brand state.
     ///   - animated: Whether or not to animate the transition.
-    func setCardBrand(_ newBrand: STPCardBrand, animated: Bool) {
-        let canAnimateTransition = imageView.image != self.image(for: newBrand)
+    func setCardBrand(_ newBrandState: STPCBCController.BrandState, animated: Bool) {
+        let newImage = image(for: newBrandState)
 
-        self.cardBrand = newBrand
+        // Image has changed and we're not switching between unknown option states
+        let canAnimateTransition = imageView.image != newImage && !(self.cardBrandState == .unknownMultipleOptions && newBrandState == .unknown) && !(self.cardBrandState == .unknown && newBrandState == .unknownMultipleOptions)
+
+        self.cardBrandState = newBrandState
 
         if animated && canAnimateTransition {
             performTransitionAnimation()
@@ -155,7 +206,7 @@ import UIKit
     // MARK: - Private Methods
 
     private func updateIcon() {
-        imageView.image = image(for: cardBrand)
+        imageView.image = image(for: cardBrandState)
     }
 
     private func performTransitionAnimation() {
@@ -177,30 +228,35 @@ import UIKit
         let animationGroup = CAAnimationGroup()
         animationGroup.animations = [scaleAnimation, opacityAnimation]
 
-        self.layer.add(animationGroup, forKey: "transition")
+        self.imageView.layer.add(animationGroup, forKey: "transition")
     }
 
     /// Returns the most appropriate icon/image for the given card brand.
     /// - Parameter cardBrand: Card brand
     /// - Returns: Image.
-    private func image(for cardBrand: STPCardBrand) -> UIImage {
+    private func image(for brandState: STPCBCController.BrandState) -> UIImage {
         if showCVC {
-            return cardBrand == .amex
-                ? STPImageLibrary.safeImageNamed("card_cvc_amex_icon")
-                : STPImageLibrary.safeImageNamed("card_cvc_icon")
-        } else {
-            return cardBrand == .unknown
-                ? STPImageLibrary.safeImageNamed("card_unknown_icon")
-                : STPImageLibrary.cardBrandImage(for: cardBrand)
+            return STPImageLibrary.cvcImage(for: brandState.brand)
+        }
+        switch brandState {
+        case .brand(let brand):
+            return STPImageLibrary.cardBrandImage(for: brand)
+        case .cbcBrandSelected(let brand):
+            return STPImageLibrary.cardBrandImage(for: brand)
+        case .unknown:
+            return STPImageLibrary.cardBrandImage(for: .unknown)
+        case .unknownMultipleOptions:
+            return STPImageLibrary.cardBrandChoiceImage()
         }
     }
 
     // MARK: - Callbacks
-
+#if !canImport(CompositorServices)
     @_spi(STP) public override func traitCollectionDidChange(
         _ previousTraitCollection: UITraitCollection?
     ) {
         super.traitCollectionDidChange(previousTraitCollection)
         updateIcon()
     }
+#endif
 }

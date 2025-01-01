@@ -12,7 +12,7 @@ import Foundation
 extension PaymentSheet {
     static func handleDeferredIntentConfirmation(
         confirmType: ConfirmPaymentMethodType,
-        configuration: PaymentSheet.Configuration,
+        configuration: PaymentElementConfiguration,
         intentConfig: PaymentSheet.IntentConfiguration,
         authenticationContext: STPAuthenticationContext,
         paymentHandler: STPPaymentHandler,
@@ -20,20 +20,23 @@ extension PaymentSheet {
         mandateData: STPMandateDataParams? = nil,
         completion: @escaping (PaymentSheetResult, STPAnalyticsClient.DeferredIntentConfirmationType?) -> Void
     ) {
-        // Hack: Add deferred to analytics product usage as a hack to get it into the payment_user_agent string in the request to create a PaymentMethod
-        STPAnalyticsClient.sharedClient.addClass(toProductUsageIfNecessary: IntentConfiguration.self)
-
         Task { @MainActor in
             do {
                 var confirmType = confirmType
                 // 1. Create PM if necessary
                 let paymentMethod: STPPaymentMethod
                 switch confirmType {
-                case let .saved(savedPaymentMethod):
+                case let .saved(savedPaymentMethod, _):
                     paymentMethod = savedPaymentMethod
                 case let .new(params, paymentOptions, newPaymentMethod, shouldSave):
-                    assert(newPaymentMethod == nil)
-                    paymentMethod = try await configuration.apiClient.createPaymentMethod(with: params)
+                    if let newPaymentMethod {
+                        let errorAnalytic = ErrorAnalytic(event: .unexpectedPaymentSheetConfirmationError,
+                                                          error: PaymentSheetError.unexpectedNewPaymentMethod,
+                                                          additionalNonPIIParams: ["payment_method_type": newPaymentMethod.type])
+                        STPAnalyticsClient.sharedClient.log(analytic: errorAnalytic)
+                    }
+                    stpAssert(newPaymentMethod == nil)
+                    paymentMethod = try await configuration.apiClient.createPaymentMethod(with: params, additionalPaymentUserAgentValues: makeDeferredPaymentUserAgentValue(intentConfiguration: intentConfig))
                     confirmType = .new(params: params, paymentOptions: paymentOptions, paymentMethod: paymentMethod, shouldSave: shouldSave)
                 }
 
@@ -47,41 +50,52 @@ extension PaymentSheet {
                     return
                 }
 
+                // Overwrite `completion` to ensure we set the default if necessary before completing.
+                let completion = { (status: STPPaymentHandlerActionStatus, paymentOrSetupIntent: PaymentOrSetupIntent?, error: NSError?, deferredIntentConfirmationType: STPAnalyticsClient.DeferredIntentConfirmationType) in
+                    if let paymentOrSetupIntent {
+                        setDefaultPaymentMethodIfNecessary(actionStatus: status, intent: paymentOrSetupIntent, configuration: configuration)
+                    }
+                    completion(makePaymentSheetResult(for: status, error: error), deferredIntentConfirmationType)
+                }
+
                 // 3. Retrieve the PaymentIntent or SetupIntent
                 switch intentConfig.mode {
                 case .payment:
                     let paymentIntent = try await configuration.apiClient.retrievePaymentIntent(clientSecret: clientSecret, expand: ["payment_method"])
+
                     // Check if it needs confirmation
                     if [STPPaymentIntentStatus.requiresPaymentMethod, STPPaymentIntentStatus.requiresConfirmation].contains(paymentIntent.status) {
                         // 4a. Client-side confirmation
-                        try PaymentSheetDeferredValidator.validate(paymentIntent: paymentIntent, intentConfiguration: intentConfig, isFlowController: isFlowController)
+                        try PaymentSheetDeferredValidator.validate(paymentIntent: paymentIntent, intentConfiguration: intentConfig, paymentMethod: paymentMethod, isFlowController: isFlowController)
                         let paymentIntentParams = makePaymentIntentParams(
                             confirmPaymentMethodType: confirmType,
                             paymentIntent: paymentIntent,
                             configuration: configuration,
                             mandateData: mandateData
                         )
+
                         paymentHandler.confirmPayment(
                             paymentIntentParams,
                             with: authenticationContext
-                        ) { status, _, error in
-                            completion(makePaymentSheetResult(for: status, error: error), .client)
+                        ) { status, paymentIntent, error in
+                            completion(status, paymentIntent.flatMap { PaymentOrSetupIntent.paymentIntent($0) }, error, .client)
                         }
                     } else {
                         // 4b. Server-side confirmation
+                        try PaymentSheetDeferredValidator.validatePaymentMethod(intentPaymentMethod: paymentIntent.paymentMethod, paymentMethod: paymentMethod)
                         paymentHandler.handleNextAction(
                             for: paymentIntent,
                             with: authenticationContext,
                             returnURL: configuration.returnURL
-                        ) { status, _, error in
-                            completion(makePaymentSheetResult(for: status, error: error), .server)
+                        ) { status, paymentIntent, error in
+                            completion(status, paymentIntent.flatMap { PaymentOrSetupIntent.paymentIntent($0) }, error, .server)
                         }
                     }
                 case .setup:
                     let setupIntent = try await configuration.apiClient.retrieveSetupIntent(clientSecret: clientSecret, expand: ["payment_method"])
                     if [STPSetupIntentStatus.requiresPaymentMethod, STPSetupIntentStatus.requiresConfirmation].contains(setupIntent.status) {
                         // 4a. Client-side confirmation
-                        try PaymentSheetDeferredValidator.validate(setupIntent: setupIntent, intentConfiguration: intentConfig)
+                        try PaymentSheetDeferredValidator.validate(setupIntent: setupIntent, intentConfiguration: intentConfig, paymentMethod: paymentMethod)
                         let setupIntentParams = makeSetupIntentParams(
                             confirmPaymentMethodType: confirmType,
                             setupIntent: setupIntent,
@@ -91,17 +105,18 @@ extension PaymentSheet {
                         paymentHandler.confirmSetupIntent(
                             setupIntentParams,
                             with: authenticationContext
-                        ) { status, _, error in
-                            completion(makePaymentSheetResult(for: status, error: error), .client)
+                        ) { status, setupIntent, error in
+                            completion(status, setupIntent.flatMap { PaymentOrSetupIntent.setupIntent($0) }, error, .client)
                         }
                     } else {
                         // 4b. Server-side confirmation
+                        try PaymentSheetDeferredValidator.validatePaymentMethod(intentPaymentMethod: setupIntent.paymentMethod, paymentMethod: paymentMethod)
                         paymentHandler.handleNextAction(
                             for: setupIntent,
                             with: authenticationContext,
                             returnURL: configuration.returnURL
-                        ) { status, _, error in
-                            completion(makePaymentSheetResult(for: status, error: error), .server)
+                        ) { status, setupIntent, error in
+                            completion(status, setupIntent.flatMap { PaymentOrSetupIntent.setupIntent($0) }, error, .server)
                         }
                     }
                 }
@@ -141,10 +156,14 @@ extension PaymentSheet {
             }
         }
     }
-}
 
-@_spi(STP) extension PaymentSheet.IntentConfiguration: STPAnalyticsProtocol {
-    public static var stp_analyticsIdentifier: String {
-        return "deferred-intent"
+    static func makeDeferredPaymentUserAgentValue(intentConfiguration: IntentConfiguration) -> [String] {
+        var paymentUserAgentValues = ["deferred-intent"]
+        if intentConfiguration.paymentMethodTypes?.isEmpty ?? true {
+            // Add "autopm" tag when using deferred intents and merchant is using automatic_payment_methods
+            // If paymentMethodTypes is empty, assume they are using automatic_payment_methods.
+            paymentUserAgentValues.append("autopm")
+        }
+        return paymentUserAgentValues
     }
 }

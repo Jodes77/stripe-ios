@@ -57,8 +57,8 @@ final class SelfieScanningView: UIView {
             )
         }
 
-        static func consentCheckboxTheme(tintColor: UIColor) -> ElementsUITheme {
-            var theme = ElementsUITheme.default
+        static func consentCheckboxTheme(tintColor: UIColor) -> ElementsAppearance {
+            var theme = ElementsAppearance.default
             theme.colors.bodyText = IdentityUI.textColor
             theme.colors.secondaryText = IdentityUI.textColor
             theme.fonts.caption = IdentityUI.preferredFont(forTextStyle: .caption1)
@@ -212,7 +212,7 @@ final class SelfieScanningView: UIView {
 
     // MARK: Configure
 
-    func configure(with viewModel: ViewModel, analyticsClient: IdentityAnalyticsClient?) {
+    func configure(with viewModel: ViewModel, sheetController: VerificationSheetControllerProtocol?) {
 
         instructionLabelView.configure(from: viewModel.instructionalLabelViewModel)
 
@@ -252,7 +252,7 @@ final class SelfieScanningView: UIView {
 
             do {
                 consentCheckboxButton.setAttributedText(
-                    try NSAttributedString(
+                    try NSAttributedString.createHtmlString(
                         htmlText: consentText,
                         style: Styling.consentHTMLStyle
                     )
@@ -268,7 +268,9 @@ final class SelfieScanningView: UIView {
             } catch {
                 // Keep the consent checkbox hidden and treat this case the same
                 // as if the user did not give consent.
-                analyticsClient?.logGenericError(error: error)
+                if let sheetController = sheetController {
+                    sheetController.analyticsClient.logGenericError(error: error, sheetController: sheetController)
+                }
             }
         case .saving(let images, consentHTMLText: let consentText):
             scannedImageScrollView.isHidden = false
@@ -276,7 +278,7 @@ final class SelfieScanningView: UIView {
 
             do {
                 consentCheckboxButton.setAttributedText(
-                    try NSAttributedString(
+                    try NSAttributedString.createHtmlString(
                         htmlText: consentText,
                         style: Styling.consentHTMLStyle
                     )
@@ -289,7 +291,9 @@ final class SelfieScanningView: UIView {
             } catch {
                 // Keep the consent checkbox hidden and treat this case the same
                 // as if the user did not give consent.
-                analyticsClient?.logGenericError(error: error)
+                if let sheetController = sheetController {
+                    sheetController.analyticsClient.logGenericError(error: error, sheetController: sheetController)
+                }
             }
         }
     }

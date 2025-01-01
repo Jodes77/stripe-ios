@@ -13,21 +13,31 @@ import PassKit
 import UIKit
 
 enum PaymentSheetUI {
+    enum Error: Swift.Error {
+        case switchContentIfNecessaryStateInvalid
+    }
     /// The padding between views in the sheet e.g., between the bottom of the form and the Pay button
     static let defaultPadding: CGFloat = 20
+
+#if canImport(CompositorServices)
+    static let navBarPadding: CGFloat = 30
+#else
+    static let navBarPadding = defaultPadding
+#endif
+
     static let defaultMargins: NSDirectionalEdgeInsets = .insets(
         leading: defaultPadding, trailing: defaultPadding)
     static let defaultSheetMargins: NSDirectionalEdgeInsets = .insets(
-        leading: defaultPadding, bottom: 36, trailing: defaultPadding)
+        leading: defaultPadding, bottom: 40, trailing: defaultPadding)
     static let minimumTapSize: CGSize = CGSize(width: 44, height: 44)
     static let defaultAnimationDuration: TimeInterval = 0.2
     static let quickAnimationDuration: TimeInterval = 0.1
-    /// The minimnum amount of time to spend processing before transitioning to success/failure
+    /// The minimum amount of time to spend processing before transitioning to success/failure
     static let minimumFlightTime: TimeInterval = 1
     static let delayBetweenSuccessAndDismissal: TimeInterval = 1.5
     static let minimumHitArea = CGSize(width: 44, height: 44)
 
-    static func makeHeaderLabel(appearance: PaymentSheet.Appearance) -> UILabel {
+    static func makeHeaderLabel(title: String? = nil, appearance: PaymentSheet.Appearance) -> UILabel {
         let header = UILabel()
         header.textColor = appearance.colors.text
         header.numberOfLines = 2
@@ -35,6 +45,7 @@ enum PaymentSheetUI {
         header.accessibilityTraits = [.header]
         header.adjustsFontSizeToFitWidth = true
         header.adjustsFontForContentSizeCategory = true
+        header.text = title
         return header
     }
 }
@@ -51,9 +62,22 @@ extension PKPaymentButtonStyle {
 
 extension UIViewController {
     func switchContentIfNecessary(
-        to toVC: UIViewController, containerView: DynamicHeightContainerView
+        to toVC: UIViewController,
+        containerView: DynamicHeightContainerView,
+        contentOffsetPercentage: CGFloat? = nil
     ) {
-        assert(children.count <= 1)
+        if children.count > 1 {
+            let from_vc_name = NSStringFromClass(children.first!.classForCoder)
+            let to_vc_name = NSStringFromClass(toVC.classForCoder)
+
+            let errorAnalytic = ErrorAnalytic(event: .unexpectedPaymentSheetError,
+                                              error: PaymentSheetUI.Error.switchContentIfNecessaryStateInvalid,
+                                              additionalNonPIIParams: ["from_vc": from_vc_name,
+                                                                       "to_vc": to_vc_name,
+                                                                      ])
+            STPAnalyticsClient.sharedClient.log(analytic: errorAnalytic)
+        }
+        stpAssert(children.count <= 1)
         // Swap out child view controllers if necessary
         if let fromVC = children.first {
             guard fromVC != toVC else {
@@ -61,6 +85,7 @@ extension UIViewController {
             }
 
             // Add the new one
+            toVC.beginAppearanceTransition(true, animated: true)
             self.addChild(toVC)
             toVC.view.alpha = 0
             containerView.addPinnedSubview(toVC.view)
@@ -77,24 +102,37 @@ extension UIViewController {
                     fromVC.view.alpha = 0
                     toVC.view.alpha = 1
                 },
+                postLayoutAnimations: {
+                    if let contentOffsetPercentage {
+                        self.bottomSheetController?.contentOffsetPercentage = contentOffsetPercentage
+                    }
+                },
                 completion: { _ in
-                    // Remove the old one
-                    self.remove(childViewController: fromVC)
+                    toVC.endAppearanceTransition()
+                    // Finish removing the old one
+                    fromVC.view.removeFromSuperview()
+                    fromVC.didMove(toParent: nil)
                     UIAccessibility.post(notification: .screenChanged, argument: toVC.view)
                 }
             )
         } else {
-            addChild(toVC)
-            containerView.addPinnedSubview(toVC.view)
-            containerView.updateHeight()
-            toVC.didMove(toParent: self)
+            add(childViewController: toVC, containerView: containerView)
             containerView.setNeedsLayout()
             containerView.layoutIfNeeded()
             UIAccessibility.post(notification: .screenChanged, argument: toVC.view)
         }
     }
 
+    func add(childViewController: UIViewController, containerView: DynamicHeightContainerView) {
+        addChild(childViewController)
+        containerView.addPinnedSubview(childViewController.view)
+        containerView.updateHeight()
+        childViewController.didMove(toParent: self)
+    }
+
     func remove(childViewController: UIViewController) {
+        childViewController.willMove(toParent: nil)
+        childViewController.removeFromParent()
         childViewController.view.removeFromSuperview()
         childViewController.didMove(toParent: nil)
     }

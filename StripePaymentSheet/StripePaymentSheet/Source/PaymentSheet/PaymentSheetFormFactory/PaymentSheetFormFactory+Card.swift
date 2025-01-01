@@ -13,20 +13,18 @@ import StripePayments
 import UIKit
 
 extension PaymentSheetFormFactory {
-    func makeCard() -> PaymentMethodElement {
-        let isLinkEnabled = offerSaveToLinkWhenSupported && canSaveToLink
+    func makeCard(cardBrandChoiceEligible: Bool = false) -> PaymentMethodElement {
+        let showLinkInlineSignup = showLinkInlineCardSignup
         let saveCheckbox = makeSaveCheckbox(
-            label: String.Localized.save_this_card_for_future_$merchant_payments(
+            label: String.Localized.save_payment_details_for_future_$merchant_payments(
                 merchantDisplayName: configuration.merchantDisplayName
             )
         )
-        let shouldDisplaySaveCheckbox: Bool = saveMode == .userSelectable && !canSaveToLink
 
         // Make section titled "Contact Information" w/ phone and email if merchant requires it.
         let optionalPhoneAndEmailInformationSection: SectionElement? = {
             let emailElement: Element? = configuration.billingDetailsCollectionConfiguration.email == .always ? makeEmail() : nil
-            // Link can't collect phone.
-            let shouldIncludePhone = !configuration.linkPaymentMethodsOnly && configuration.billingDetailsCollectionConfiguration.phone == .always
+            let shouldIncludePhone = configuration.billingDetailsCollectionConfiguration.phone == .always
             let phoneElement: Element? = shouldIncludePhone ? makePhone() : nil
             let contactInformationElements = [emailElement, phoneElement].compactMap { $0 }
             guard !contactInformationElements.isEmpty else {
@@ -44,19 +42,24 @@ extension PaymentSheetFormFactory {
             guard let expiryMonth = previousCardInput?.expMonth?.intValue, let expiryYear = previousCardInput?.expYear?.intValue else {
                 return nil
             }
-            return String(format: "%02d%02d", expiryMonth, expiryYear)
+            return String(format: "%02d%02d", expiryMonth, expiryYear % 100) // Modulo 100 as safeguard to get last 2 digits of the expiry
         }()
-        let cardDefaultValues = CardSection.DefaultValues(
+        let cardDefaultValues = CardSectionElement.DefaultValues(
             name: defaultBillingDetails().name,
             pan: previousCardInput?.number,
             cvc: previousCardInput?.cvc,
             expiry: formattedExpiry
         )
 
-        let cardSection = CardSection(
+        let cardSection = CardSectionElement(
             collectName: configuration.billingDetailsCollectionConfiguration.name == .always,
             defaultValues: cardDefaultValues,
-            theme: theme
+            preferredNetworks: configuration.preferredNetworks,
+            cardBrandChoiceEligible: cardBrandChoiceEligible,
+            hostedSurface: .init(config: configuration),
+            theme: theme,
+            analyticsHelper: analyticsHelper,
+            cardBrandFilter: configuration.cardBrandFilter
         )
 
         let billingAddressSection: PaymentMethodElementWrapper<AddressSectionElement>? = {
@@ -79,26 +82,35 @@ extension PaymentSheetFormFactory {
             addressElement: billingAddressSection,
             phoneElement: phoneElement)
 
-        let cardFormElement = FormElement(
-            elements: [
-                optionalPhoneAndEmailInformationSection,
-                cardSection,
-                billingAddressSection,
-                shouldDisplaySaveCheckbox ? saveCheckbox : nil,
-            ],
-            theme: theme)
-        let cardFormElementWrapper = makeDefaultsApplierWrapper(for: cardFormElement)
+        var elements: [Element?] = [
+            optionalPhoneAndEmailInformationSection,
+            cardSection,
+            billingAddressSection,
+            shouldDisplaySaveCheckbox ? saveCheckbox : nil,
+        ]
 
-        if case .paymentSheet(let configuration) = configuration, isLinkEnabled {
-            return LinkEnabledPaymentMethodElement(
-                type: .card,
-                paymentMethodElement: cardFormElementWrapper,
+        if case .paymentSheet(let configuration) = configuration, let accountService, showLinkInlineSignup {
+            let inlineSignupElement = LinkInlineSignupElement(
                 configuration: configuration,
                 linkAccount: linkAccount,
-                country: countryCode
+                country: countryCode,
+                showCheckbox: !shouldDisplaySaveCheckbox,
+                accountService: accountService
             )
-        } else {
-            return cardFormElementWrapper
+            elements.append(inlineSignupElement)
         }
+
+        let mandate: SimpleMandateElement? = {
+            if isSettingUp {
+                return makeMandate(mandateText: String(format: .Localized.by_providing_your_card_information_text, configuration.merchantDisplayName))
+
+            }
+            return nil
+        }()
+        elements.append(mandate)
+
+        return FormElement(
+            elements: elements,
+            theme: theme)
     }
 }

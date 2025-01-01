@@ -44,6 +44,20 @@ extension Dictionary {
         }
         return newDict
     }
+
+    @_spi(STP) public mutating func mergeAssertingOnOverwrites(_ other: [Key: Value]) {
+        merge(other) { a, b in
+            stpAssertionFailure("Dictionary merge is overwriting a key with values: \(a) and \(b)!")
+            return a
+        }
+    }
+
+    @_spi(STP) public func mergingAssertingOnOverwrites<S>(_ other: S) -> [Key: Value] where S: Sequence, S.Element == (Key, Value) {
+        merging(other) { a, b in
+            stpAssertionFailure("Dictionary merge is overwriting a key with values: \(a) and \(b)!")
+            return a
+        }
+    }
 }
 
 extension Dictionary where Value == Any {
@@ -69,7 +83,7 @@ extension Dictionary where Value == Any {
 }
 
 // From https://talk.objc.io/episodes/S01E31-mutating-untyped-dictionaries
-extension Dictionary {
+@_spi(STP) public extension Dictionary {
     /// Example usage: `dict[jsonDict: "countries"]?[jsonDict: "japan"]?["capital"] = "berlin"`
     subscript(jsonDict key: Key) -> [String: Any]? {
         get {

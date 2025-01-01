@@ -10,11 +10,17 @@
 
 "Area" = "Terület";
 
+"BLIK code" = "BLIK kód";
+
 "BSB number" = "BSB-szám";
+
+"Bank account •••• %@" = "Bankszámla •••• %@";
 
 "Billing address is same as shipping" = "A számlázási cím megegyezik a szállítási címmel";
 
 "Cancel" = "Mégse";
+
+"Card brand" = "Kártyatípus";
 
 "City" = "Város";
 
@@ -37,6 +43,8 @@
 "District" = "Kerület";
 
 "Do Si" = "Do Si";
+
+"Do you want to close this form?" = "Bezárja ezt az űrlapot?";
 
 "Done" = "Kész";
 
@@ -76,7 +84,7 @@
 
 "Parish" = "Egyházközség";
 
-"Phone" = "Telefon";
+"Phone number" = "Telefonszám";
 
 "Postal code" = "Irányítószám";
 
@@ -86,11 +94,15 @@
 
 "Remove" = "Eltávolítás";
 
-"Remove bank account" = "Bankszámla eltávolítása";
+"Remove bank account?" = "Eltávolítja a bankszámlát?";
 
-"Remove bank account ending in %@" = "%@ számra végződő bankszámla eltávolítása";
+"Remove card" = "Kártya törlése";
 
 "Search" = "Keresés";
+
+"Select card brand (optional)" = "Válassza ki a kártya márkáját (nem kötelező)";
+
+"Sort code" = "Bankazonosító";
 
 "State" = "Állam";
 
@@ -104,6 +116,8 @@
 
 "The account number you entered is incomplete." = "A számlaszám hiányos.";
 
+"The sort code you entered is invalid." = "A beírt bankazonosító érvénytelen.";
+
 "Town or city" = "Kisváros vagy város";
 
 "UPI ID" = "UPI-azonosító";
@@ -112,9 +126,15 @@
 
 "Use rotor to access links" = "Rotor használata a hivatkozások kezeléséhez";
 
+"Your BLIK code is incomplete." = "BLIK kódja hiányos.";
+
+"Your BLIK code is invalid." = "BLIK kódja érvénytelen.";
+
 "Your ZIP is incomplete." = "A ZIP hiányos.";
 
 "Your email is invalid." = "Érvénytelen e-mail-cím.";
+
+"Your payment information will not be saved." = "Fizetési adatai nem lesznek mentve.";
 
 "Your postal code is incomplete." = "Az irányítószám hiányos.";
 

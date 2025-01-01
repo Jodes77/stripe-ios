@@ -7,17 +7,10 @@
 //
 
 import Foundation
-import StripeCore
+@_spi(STP) import StripeCore
 @_spi(STP) import StripeUICore
 
 extension PaymentSheetFormFactory {
-    func specFromJSONProvider(provider: FormSpecProvider = FormSpecProvider.shared) -> FormSpec? {
-        guard let paymentMethodType = PaymentSheet.PaymentMethodType.string(from: paymentMethod) else {
-            return nil
-        }
-        return provider.formSpec(for: paymentMethodType)
-    }
-
     func makeFormElementFromSpec(
         spec: FormSpec,
         additionalElements: [Element] = []
@@ -181,7 +174,13 @@ extension PaymentSheetFormFactory {
     }
 
     func makeDropdown(for selectorSpec: FormSpec.SelectorSpec) -> PaymentMethodElementWrapper<DropdownFieldElement> {
-        assert(selectorSpec.apiPath?["v1"] != nil) // If there's no api path, the dropdown selection is unused!
+        if selectorSpec.apiPath?["v1"] == nil {
+            let errorAnalytic = ErrorAnalytic(event: .unexpectedPaymentSheetFormFactoryError,
+                                              error: Error.missingV1FromSelectorSpec,
+                                              additionalNonPIIParams: ["payment_method": paymentMethod.identifier])
+            analyticsHelper?.analyticsClient.log(analytic: errorAnalytic)
+        }
+        stpAssert(selectorSpec.apiPath?["v1"] != nil) // If there's no api path, the dropdown selection is unused!
         let dropdownItems: [DropdownFieldElement.DropdownItem] = selectorSpec.items.map {
             .init(pickerDisplayName: $0.displayText, labelDisplayName: $0.displayText, accessibilityValue: $0.displayText, rawData: $0.apiValue ?? $0.displayText)
         }

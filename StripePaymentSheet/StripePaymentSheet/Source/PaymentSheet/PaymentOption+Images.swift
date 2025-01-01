@@ -21,64 +21,111 @@ extension PaymentOption {
         switch self {
         case .applePay:
             return Image.apple_pay_mark.makeImage().withRenderingMode(.alwaysOriginal)
-        case .saved(let paymentMethod):
-            return paymentMethod.makeIcon()
+        case .saved(let paymentMethod, let paymentOption):
+            if let linkedBank = paymentOption?.instantDebitsLinkedBank {
+                return PaymentSheetImageLibrary.bankIcon(for: PaymentSheetImageLibrary.bankIconCode(for: linkedBank.bankName))
+            } else {
+                return paymentMethod.makeIcon()
+            }
         case .new(let confirmParams):
             return confirmParams.makeIcon(updateImageHandler: updateImageHandler)
         case .link:
-            return Image.pm_type_link.makeImage()
+            return Image.link_logo.makeImage()
+        case .external(let paymentMethod, _):
+            return PaymentSheet.PaymentMethodType.external(paymentMethod).makeImage(
+                forDarkBackground: traitCollection?.isDarkMode ?? false,
+                updateHandler: nil
+            )
         }
     }
 
-    /// Returns an image representing the payment option, suitable for display within PaymentSheet cells
-    func makeCarouselImage(for view: UIView) -> UIImage {
+    /// Returns an image to display inside a cell representing the given payment option in the saved PM collection view
+    func makeSavedPaymentMethodCellImage(overrideUserInterfaceStyle: UIUserInterfaceStyle) -> UIImage {
         switch self {
         case .applePay:
-            return makeIcon(for: view.traitCollection, updateImageHandler: nil)
-        case .saved(let paymentMethod):
-            return paymentMethod.makeCarouselImage(for: view)
-        case .new(let confirmParams):
-            return confirmParams.paymentMethodParams.makeCarouselImage(for: view)
+            return Image.carousel_applepay.makeImage(template: false, overrideUserInterfaceStyle: overrideUserInterfaceStyle)
+        case .saved(let paymentMethod, _):
+            return paymentMethod.makeSavedPaymentMethodCellImage(overrideUserInterfaceStyle: overrideUserInterfaceStyle)
+        case .new:
+            assertionFailure("This shouldn't be called - we don't show new PMs in the saved PM collection view")
+            return UIImage()
         case .link:
-            return Image.link_carousel_logo.makeImage(template: true)
+            return Image.link_logo.makeImage()
+        case .external:
+            assertionFailure("This shouldn't be called - we don't show EPMs in the saved PM collection view")
+            return UIImage()
         }
     }
 }
 
 extension STPPaymentMethod {
+    /// Returns the first non-unknown card brand, prioritizing the card's preferred network brand > display brand > brand
+    func calculateCardBrandToDisplay() -> STPCardBrand {
+        guard let card else { return .unknown }
+        let preferredDisplayBrand = card.networks?.preferred?.toCardBrand
+        let displayBrand = card.displayBrand?.toCardBrand
+        return [preferredDisplayBrand, displayBrand, card.brand].compactMap { $0 }.first {
+            $0 != .unknown
+        } ?? .unknown
+    }
+
     func makeIcon() -> UIImage {
         switch type {
         case .card:
-            guard let card = card else {
-                return STPImageLibrary.unknownCardCardImage()
-            }
-
-            return STPImageLibrary.cardBrandImage(for: card.brand)
-        case .iDEAL:
-            return Image.pm_type_ideal.makeImage()
+            return STPImageLibrary.cardBrandImage(for: calculateCardBrandToDisplay())
         case .USBankAccount:
             return PaymentSheetImageLibrary.bankIcon(
                 for: PaymentSheetImageLibrary.bankIconCode(for: usBankAccount?.bankName)
             )
         default:
             // If there's no image specific to this PaymentMethod (eg card network logo, bank logo), default to the PaymentMethod type's icon
-            return type.makeImage()
+            // TODO: This only looks at client-side assets! 
+            let image = type.makeImage()
+            if image == nil {
+                assertionFailure()
+            }
+            return image ?? UIImage()
         }
     }
 
-    func makeCarouselImage(for view: UIView) -> UIImage {
-        if type == .card, let cardBrand = card?.brand {
-            return cardBrand.makeCarouselImage()
-        } else if type == .USBankAccount {
+    /// Returns an image to display inside a cell representing the given payment option in the saved PM collection view
+    func makeSavedPaymentMethodCellImage(overrideUserInterfaceStyle: UIUserInterfaceStyle?) -> UIImage {
+        switch type {
+        case .card:
+            return calculateCardBrandToDisplay().makeSavedPaymentMethodCellImage(overrideUserInterfaceStyle: overrideUserInterfaceStyle)
+        case .USBankAccount:
             return PaymentSheetImageLibrary.bankIcon(
                 for: PaymentSheetImageLibrary.bankIconCode(for: usBankAccount?.bankName)
             )
+        case .SEPADebit:
+            return Image.carousel_sepa.makeImage(overrideUserInterfaceStyle: overrideUserInterfaceStyle).withRenderingMode(.alwaysOriginal)
+        case .link:
+            return Image.link_logo.makeImage(overrideUserInterfaceStyle: overrideUserInterfaceStyle).withRenderingMode(.alwaysOriginal)
+        default:
+            assertionFailure("\(type) not supported for saved PMs")
+            return makeIcon()
         }
-        return makeIcon()
+    }
+
+    /// Returns an image to display inside a row representing the given payment option in the saved PM row view
+    func makeSavedPaymentMethodRowImage() -> UIImage {
+        switch type {
+        case .card:
+            return STPImageLibrary.unpaddedCardBrandImage(for: calculateCardBrandToDisplay())
+        case .USBankAccount:
+            return PaymentSheetImageLibrary.bankIcon(
+                for: PaymentSheetImageLibrary.bankIconCode(for: usBankAccount?.bankName)
+            ).rounded(radius: 3)
+        case .SEPADebit:
+            return Image.pm_type_sepa.makeImage().withRenderingMode(.alwaysOriginal)
+        default:
+            assertionFailure("\(type) not supported for saved PMs")
+            return makeIcon()
+        }
     }
 }
 
-extension STPPaymentMethodParams {
+ extension STPPaymentMethodParams {
     func makeIcon(updateHandler: DownloadManager.UpdateImageHandler?) -> UIImage {
         switch type {
         case .card:
@@ -86,90 +133,109 @@ extension STPPaymentMethodParams {
                 return STPImageLibrary.unknownCardCardImage()
             }
 
-            let brand = STPCardValidator.brand(forNumber: number)
+            var brand = STPCardValidator.brand(forNumber: number)
+            // Handle co-banded cards for flow controller
+            if let networks = card.networks {
+                brand = networks.preferred?.toCardBrand ?? .unknown
+            }
+
             return STPImageLibrary.cardBrandImage(for: brand)
         default:
             // If there's no image specific to this PaymentMethod (eg card network logo, bank logo), default to the PaymentMethod type's icon
-            return self.paymentSheetPaymentMethodType().makeImage(updateHandler: updateHandler)
+            // TODO: Refactor this out of PaymentMethodType. Users shouldn't have to convert STPPaymentMethodType to PaymentMethodType in order to get its image.
+            return PaymentSheet.PaymentMethodType.stripe(type).makeImage(updateHandler: updateHandler)
         }
     }
-
-    func makeCarouselImage(for view: UIView) -> UIImage {
-        if type == .card, let card = card, let number = card.number {
-            let cardBrand = STPCardValidator.brand(forNumber: number)
-            return cardBrand.makeCarouselImage()
-        }
-        return makeIcon(updateHandler: nil)
-    }
-}
-
-extension ConsumerPaymentDetails {
-    func makeIcon() -> UIImage {
-        switch details {
-        case .card(let card):
-            return STPImageLibrary.cardBrandImage(for: card.stpBrand)
-        case .bankAccount(let bankAccount):
-            return PaymentSheetImageLibrary.bankIcon(for: bankAccount.iconCode)
-        case .unparsable:
-            return UIImage()
-        }
-    }
-}
+ }
 
 extension STPPaymentMethodType {
 
     /// A few payment method type icons need to be tinted white or black as they do not have
     /// light/dark agnostic icons
     var iconRequiresTinting: Bool {
-        return self == .card || self == .AUBECSDebit || self == .USBankAccount || self == .linkInstantDebit
+        switch self {
+        case .card, .AUBECSDebit, .USBankAccount, .konbini, .boleto, .bacsDebit:
+            return true
+        default:
+            return false
+        }
     }
 
-    func makeImage(forDarkBackground: Bool = false) -> UIImage {
-        guard
-            let image: Image = {
-                switch self {
-                case .card:
-                    return .pm_type_card
-                case .iDEAL:
-                    return .pm_type_ideal
-                case .bancontact:
-                    return .pm_type_bancontact
-                case .SEPADebit:
-                    return .pm_type_sepa
-                case .EPS:
-                    return .pm_type_eps
-                case .giropay:
-                    return .pm_type_giropay
-                case .przelewy24:
-                    return .pm_type_p24
-                case .afterpayClearpay:
-                    return .pm_type_afterpay
-                case .sofort, .klarna:
-                    return .pm_type_klarna
-                case .affirm:
-                    return .pm_type_affirm
-                case .payPal:
-                    return .pm_type_paypal
-                case .AUBECSDebit:
-                    return .pm_type_aubecsdebit
-                case .USBankAccount, .linkInstantDebit:
-                    return .pm_type_us_bank
-                case .UPI:
-                    return .pm_type_upi
-                case .cashApp:
-                    return .pm_type_cashapp
-                case .blik:
-                    return .pm_type_blik
-                default:
-                    return nil
-                }
-            }()
-        else {
-            assertionFailure()
-            return UIImage()
-        }
+    func makeImage(forDarkBackground: Bool = false) -> UIImage? {
+        let image: Image? = {
+            switch self {
+            case .card:
+                return .pm_type_card
+            case .iDEAL:
+                return .pm_type_ideal
+            case .bancontact:
+                return .pm_type_bancontact
+            case .SEPADebit:
+                return .pm_type_sepa
+            case .EPS:
+                return .pm_type_eps
+            case .giropay:
+                return .pm_type_giropay
+            case .przelewy24:
+                return .pm_type_p24
+            case .afterpayClearpay:
+                return .pm_type_afterpay
+            case .sofort, .klarna:
+                return .pm_type_klarna
+            case .affirm:
+                return .pm_type_affirm
+            case .payPal:
+                return .pm_type_paypal
+            case .AUBECSDebit:
+                return .pm_type_aubecsdebit
+            case .USBankAccount:
+                return .pm_type_us_bank
+            case .UPI:
+                return .pm_type_upi
+            case .cashApp:
+                return .pm_type_cashapp
+            case .revolutPay:
+                return .pm_type_revolutpay
+            case .blik:
+                return .pm_type_blik
+            case .bacsDebit:
+                return .pm_type_us_bank
+            case .alipay:
+                return .pm_type_alipay
+            case .OXXO:
+                return .pm_type_oxxo
+            case .konbini:
+                return .pm_type_konbini
+            case .boleto:
+                return .pm_type_boleto
+            case .swish:
+                return .pm_type_swish
+            default:
+                return nil
+            }
+        }()
+        return image?.makeImage(overrideUserInterfaceStyle: forDarkBackground ? .dark : .light)
+    }
+}
 
-        // payment method type icons are light/dark agnostic except PayPal
-        return image.makeImage(darkMode: self == .payPal ? forDarkBackground : false)
+extension String {
+    var toCardBrand: STPCardBrand? {
+        return STPCard.brand(from: self)
+    }
+}
+
+extension STPPaymentMethodCard {
+    var preferredDisplayBrand: STPCardBrand {
+        return networks?.preferred?.toCardBrand ?? displayBrand?.toCardBrand ?? brand
+    }
+}
+
+extension UIImage {
+    func rounded(radius: CGFloat) -> UIImage {
+        let rect = CGRect(origin: .zero, size: size)
+        UIGraphicsBeginImageContextWithOptions(size, false, 0)
+        UIBezierPath(roundedRect: rect, cornerRadius: radius).addClip()
+        draw(in: rect)
+        return UIGraphicsGetImageFromCurrentImageContext()!
     }
 }

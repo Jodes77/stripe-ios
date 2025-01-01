@@ -10,18 +10,13 @@ import Foundation
 import iOSSnapshotTestCase
 @_spi(STP) import StripeCameraCore
 @_spi(STP) import StripeCameraCoreTestUtils
+import StripeCoreTestUtils
 
 @testable import StripeIdentity
 
-final class SelfieCaptureViewSnapshotTest: FBSnapshotTestCase {
+final class SelfieCaptureViewSnapshotTest: STPSnapshotTestCase {
 
     let view = SelfieCaptureView()
-
-    override func setUp() {
-        super.setUp()
-
-        //        recordMode = true
-    }
 
     func testError() {
         verifyView(
@@ -69,7 +64,7 @@ extension SelfieCaptureViewSnapshotTest {
         file: StaticString = #filePath,
         line: UInt = #line
     ) {
-        view.configure(with: viewModel, analyticsClient: nil)
+        view.configure(with: viewModel, sheetController: nil)
         view.autosizeHeight(width: SnapshotTestMockData.mockDeviceWidth)
         STPSnapshotVerifyView(view, file: file, line: line)
     }

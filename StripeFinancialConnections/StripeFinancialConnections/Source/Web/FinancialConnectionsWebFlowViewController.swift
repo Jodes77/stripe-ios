@@ -12,9 +12,14 @@ import UIKit
 
 protocol FinancialConnectionsWebFlowViewControllerDelegate: AnyObject {
 
-    func financialConnectionsWebFlow(
-        viewController: FinancialConnectionsWebFlowViewController,
-        didFinish result: FinancialConnectionsSheet.Result
+    func webFlowViewController(
+        _ viewController: FinancialConnectionsWebFlowViewController,
+        didFinish result: HostControllerResult
+    )
+
+    func webFlowViewController(
+        _ webFlowViewController: UIViewController,
+        didReceiveEvent event: FinancialConnectionsEvent
     )
 }
 
@@ -30,15 +35,23 @@ final class FinancialConnectionsWebFlowViewController: UIViewController {
     // MARK: - Waiting state view
 
     private lazy var continueStateView: UIView = {
-        let view = ContinueStateView(institutionImageUrl: nil) { [weak self] in
-            guard let self = self else { return }
-            if let url = self.lastOpenedNativeURL {
-                self.redirect(to: url)
-            } else {
-                self.startAuthenticationSession(manifest: self.manifest)
-            }
-        }
-        return view
+        let continueStateViews = ContinueStateViews(
+            institutionImageUrl: nil,
+            theme: manifest.theme,
+            didSelectContinue: { [weak self] in
+                guard let self else { return }
+                if let url = self.lastOpenedNativeURL {
+                    self.redirect(to: url)
+                } else {
+                    self.startAuthenticationSession(manifest: self.manifest)
+                }
+            },
+            didSelectCancel: nil
+        )
+        return PaneLayoutView(
+            contentView: continueStateViews.contentView,
+            footerView: continueStateViews.footerView
+        ).createView()
     }()
 
     /**
@@ -56,6 +69,7 @@ final class FinancialConnectionsWebFlowViewController: UIViewController {
     private let sessionFetcher: FinancialConnectionsSessionFetcher
     private let manifest: FinancialConnectionsSessionManifest
     private let returnURL: String?
+    private let elementsSessionContext: ElementsSessionContext?
 
     // MARK: - UI
 
@@ -66,11 +80,13 @@ final class FinancialConnectionsWebFlowViewController: UIViewController {
             target: self,
             action: #selector(didTapClose)
         )
-        item.tintColor = .textDisabled
+        item.tintColor = .iconDefault
+        item.imageInsets = UIEdgeInsets(top: 0, left: 0, bottom: 0, right: 5)
         return item
     }()
 
-    private let loadingView = LoadingView(frame: .zero)
+    // Use nil theme so the spinner view doesn't flash to the theme's color before launching the webview.
+    private let loadingView = LoadingView(frame: .zero, theme: nil)
 
     // MARK: - Init
 
@@ -79,13 +95,15 @@ final class FinancialConnectionsWebFlowViewController: UIViewController {
         apiClient: FinancialConnectionsAPIClient,
         manifest: FinancialConnectionsSessionManifest,
         sessionFetcher: FinancialConnectionsSessionFetcher,
-        returnURL: String?
+        returnURL: String?,
+        elementsSessionContext: ElementsSessionContext?
     ) {
         self.clientSecret = clientSecret
         self.apiClient = apiClient
         self.manifest = manifest
         self.sessionFetcher = sessionFetcher
         self.returnURL = returnURL
+        self.elementsSessionContext = elementsSessionContext
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -123,8 +141,9 @@ final class FinancialConnectionsWebFlowViewController: UIViewController {
 
 extension FinancialConnectionsWebFlowViewController {
 
-    private func notifyDelegate(result: FinancialConnectionsSheet.Result) {
-        delegate?.financialConnectionsWebFlow(viewController: self, didFinish: result)
+    private func notifyDelegate(result: HostControllerResult) {
+        let updatedResult = result.updateWith(manifest)
+        delegate?.webFlowViewController(self, didFinish: updatedResult)
         delegate = nil  // prevent the delegate from being called again
     }
 
@@ -133,22 +152,58 @@ extension FinancialConnectionsWebFlowViewController {
         additionalQueryParameters: String? = nil
     ) {
         guard authSessionManager == nil else { return }
-        loadingView.activityIndicatorView.stp_startAnimatingAndShow()
+        loadingView.showLoading(true)
         authSessionManager = AuthenticationSessionManager(manifest: manifest, window: view.window)
+        let additionalQueryParameters = Self.buildEncodedUrlParameters(
+            startingAdditionalParameters: additionalQueryParameters,
+            isInstantDebits: manifest.isProductInstantDebits,
+            linkMode: elementsSessionContext?.linkMode,
+            prefillDetails: elementsSessionContext?.prefillDetails,
+            billingDetails: elementsSessionContext?.billingDetails,
+            incentiveEligibilitySession: elementsSessionContext?.incentiveEligibilitySession
+        )
         authSessionManager?
             .start(additionalQueryParameters: additionalQueryParameters)
             .observe(using: { [weak self] (result) in
                 guard let self = self else { return }
-                self.loadingView.activityIndicatorView.stp_stopAnimatingAndHide()
+                self.loadingView.showLoading(false)
                 switch result {
-                case .success(.success):
-                    self.fetchSession()
+                case .success(.success(let returnUrl)):
+                    if manifest.isProductInstantDebits {
+                        if let paymentMethod = returnUrl.extractLinkBankPaymentMethod() {
+                            let instantDebitsLinkedBank = InstantDebitsLinkedBank(
+                                paymentMethod: paymentMethod,
+                                bankName: returnUrl.extractValue(forKey: "bank_name")?
+                                // backend can return "+" instead of a more-common encoding of "%20" for spaces
+                                    .replacingOccurrences(of: "+", with: " "),
+                                last4: returnUrl.extractValue(forKey: "last4"),
+                                linkMode: elementsSessionContext?.linkMode
+                            )
+                            self.notifyDelegateOfSuccess(result: .instantDebits(instantDebitsLinkedBank))
+                        } else {
+                            self.notifyDelegateOfFailure(
+                                error: FinancialConnectionsSheetError.unknown(
+                                    debugDescription: "Invalid payment_method returned"
+                                )
+                            )
+                        }
+                    } else {
+                        self.fetchSession()
+                    }
                 case .success(.webCancelled):
-                    self.fetchSession(webCancelled: true)
+                    if manifest.isProductInstantDebits {
+                        self.notifyDelegateOfCancel()
+                    } else {
+                        self.fetchSession(webCancelled: true)
+                    }
                 case .success(.nativeCancelled):
-                    self.fetchSession(userDidCancelInNative: true)
+                    if manifest.isProductInstantDebits {
+                        self.notifyDelegateOfCancel()
+                    } else {
+                        self.fetchSession(userDidCancelInNative: true)
+                    }
                 case .failure(let error):
-                    self.notifyDelegate(result: .failed(error: error))
+                    self.notifyDelegateOfFailure(error: error)
                 case .success(.redirect(url: let url)):
                     self.redirect(to: url)
                 }
@@ -166,40 +221,111 @@ extension FinancialConnectionsWebFlowViewController {
     }
 
     private func fetchSession(userDidCancelInNative: Bool = false, webCancelled: Bool = false) {
-        loadingView.activityIndicatorView.stp_startAnimatingAndShow()
+        loadingView.showLoading(true)
         loadingView.errorView.isHidden = true
         sessionFetcher
             .fetchSession()
             .observe { [weak self] (result) in
                 guard let self = self else { return }
-                self.loadingView.activityIndicatorView.stp_stopAnimatingAndHide()
+                self.loadingView.showLoading(false)
                 switch result {
                 case .success(let session):
                     if userDidCancelInNative {
                         // Users can cancel the web flow even if they successfully linked
                         // accounts. As a result, we check whether they linked any
                         // before returning "cancelled."
-                        if !session.accounts.data.isEmpty || session.paymentAccount != nil
-                            || session.bankAccountToken != nil
-                        {
-                            self.notifyDelegate(result: .completed(session: session))
+                        if !session.accounts.data.isEmpty || session.paymentAccount != nil || session.bankAccountToken != nil {
+                            self.notifyDelegateOfSuccess(result: .financialConnections(session))
                         } else {
-                            self.notifyDelegate(result: .canceled)
+                            self.notifyDelegateOfCancel()
                         }
                     } else if webCancelled {
                         if session.status == .cancelled && session.statusDetails?.cancelled?.reason == .customManualEntry {
                             self.notifyDelegate(result: .failed(error: FinancialConnectionsCustomManualEntryRequiredError()))
                         } else {
-                            self.notifyDelegate(result: .canceled)
+                            self.notifyDelegateOfCancel()
                         }
                     } else {
-                        self.notifyDelegate(result: .completed(session: session))
+                        self.notifyDelegateOfSuccess(result: .financialConnections(session))
                     }
                 case .failure(let error):
                     self.loadingView.errorView.isHidden = false
                     self.fetchSessionError = error
                 }
             }
+    }
+
+    private func notifyDelegateOfSuccess(result: HostControllerResult.Completed) {
+        let session: StripeAPI.FinancialConnectionsSession?
+        if case .financialConnections(let wrappedSession) = result {
+            session = wrappedSession
+        } else {
+            session = nil
+        }
+        delegate?.webFlowViewController(
+            self,
+            didReceiveEvent: FinancialConnectionsEvent(
+                name: .success,
+                metadata: FinancialConnectionsEvent.Metadata(
+                    manualEntry: session?.paymentAccount?.isManualEntry ?? false
+                )
+            )
+        )
+        notifyDelegate(result: .completed(result))
+    }
+
+    private func notifyDelegateOfCancel() {
+        delegate?.webFlowViewController(
+            self,
+            didReceiveEvent: FinancialConnectionsEvent(name: .cancel)
+        )
+        notifyDelegate(result: .canceled)
+    }
+
+    // all failures except custom manual entry failure
+    private func notifyDelegateOfFailure(error: Error) {
+        FinancialConnectionsEvent
+            .events(fromError: error)
+            .forEach { event in
+                delegate?.webFlowViewController(self, didReceiveEvent: event)
+            }
+
+        notifyDelegate(result: .failed(error: error))
+    }
+}
+
+private extension URL {
+
+    /// The URL contains a base64-encoded payment method. We store its values in `LinkBankPaymentMethod` so that
+    /// we can parse it back in StripeCore.
+    func extractLinkBankPaymentMethod() -> LinkBankPaymentMethod? {
+        guard let encodedPaymentMethod = extractValue(forKey: "payment_method") else {
+            return nil
+        }
+
+        guard let data = Data(base64Encoded: encodedPaymentMethod) else {
+            return nil
+        }
+
+        let result: Result<LinkBankPaymentMethod, Error> = STPAPIClient.decodeResponse(
+            data: data,
+            error: nil,
+            response: nil
+        )
+
+        return try? result.get()
+    }
+
+    func extractValue(forKey key: String) -> String? {
+        guard let components = URLComponents(url: self, resolvingAgainstBaseURL: false) else {
+            assertionFailure("Invalid URL")
+            return nil
+        }
+        return components
+            .queryItems?
+            .first(where: { $0.name == key })?
+            .value?
+            .removingPercentEncoding
     }
 }
 
@@ -233,7 +359,7 @@ private extension FinancialConnectionsWebFlowViewController {
 
     private func manuallyCloseWebFlowViewController() {
         if let fetchSessionError = fetchSessionError {
-            notifyDelegate(result: .failed(error: fetchSessionError))
+            notifyDelegateOfFailure(error: fetchSessionError)
         } else {
             notifyDelegate(result: .canceled)
         }
@@ -316,5 +442,88 @@ private extension FinancialConnectionsWebFlowViewController {
             return startPollingParam
         }
         return startPollingParam + "&\(fragment)"
+    }
+}
+
+extension FinancialConnectionsWebFlowViewController {
+    static func buildEncodedUrlParameters(
+        startingAdditionalParameters: String?,
+        isInstantDebits: Bool,
+        linkMode: LinkMode?,
+        prefillDetails: ElementsSessionContext.PrefillDetails?,
+        billingDetails: ElementsSessionContext.BillingDetails?,
+        incentiveEligibilitySession: ElementsSessionContext.IntentID?
+    ) -> String? {
+        var parameters: [String] = []
+
+        if let startingAdditionalParameters {
+            parameters.append(startingAdditionalParameters)
+        }
+
+        if isInstantDebits {
+            parameters.append("return_payment_method=true")
+            parameters.append("expand_payment_method=true")
+            
+            if let incentiveEligibilitySession {
+                parameters.append("instantDebitsIncentive=true")
+                parameters.append("incentiveEligibilitySession=\(incentiveEligibilitySession.id)")
+            }
+            
+            if let linkMode {
+                parameters.append("link_mode=\(linkMode.rawValue)")
+            }
+
+            if let billingDetails = billingDetails {
+                if let name = billingDetails.name, !name.isEmpty {
+                    parameters.append("billingDetails[name]=\(name)")
+                }
+                if let email = billingDetails.email, !email.isEmpty {
+                    parameters.append("billingDetails[email]=\(email)")
+                }
+                if let phone = billingDetails.phone, !phone.isEmpty {
+                    parameters.append("billingDetails[phone]=\(phone)")
+                }
+                if let address = billingDetails.address {
+                    if let city = address.city, !city.isEmpty {
+                        parameters.append("billingDetails[address][city]=\(city)")
+                    }
+                    if let country = address.country, !country.isEmpty {
+                        parameters.append("billingDetails[address][country]=\(country)")
+                    }
+                    if let line1 = address.line1, !line1.isEmpty {
+                        parameters.append("billingDetails[address][line1]=\(line1)")
+                    }
+                    if let line2 = address.line2, !line2.isEmpty {
+                        parameters.append("billingDetails[address][line2]=\(line2)")
+                    }
+                    if let postalCode = address.postalCode, !postalCode.isEmpty {
+                        parameters.append("billingDetails[address][postal_code]=\(postalCode)")
+                    }
+                    if let state = address.state, !state.isEmpty {
+                        parameters.append("billingDetails[address][state]=\(state)")
+                    }
+                }
+            }
+        }
+
+        if let prefillDetails = prefillDetails {
+            if let email = prefillDetails.email, !email.isEmpty {
+                parameters.append("email=\(email)")
+            }
+            if let phoneNumber = prefillDetails.unformattedPhoneNumber, !phoneNumber.isEmpty {
+                parameters.append("linkMobilePhone=\(phoneNumber)")
+            }
+            if let countryCode = prefillDetails.countryCode, !countryCode.isEmpty {
+                parameters.append("linkMobilePhoneCountry=\(countryCode)")
+            }
+        }
+
+        // Join all values with an &, and URL encode.
+        // We encode these parameters since they will be appended to the auth flow URL.
+        guard let result = parameters.joined(separator: "&").addingPercentEncoding(withAllowedCharacters: .urlHostAllowed) else {
+            return nil
+        }
+        // Start the result with a & if it is not empty and doesn't already start with one.
+        return result.isEmpty ? nil : result.hasPrefix("&") ? result : "&" + result
     }
 }

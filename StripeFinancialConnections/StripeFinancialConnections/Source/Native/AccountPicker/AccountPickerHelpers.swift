@@ -8,6 +8,33 @@
 import UIKit
 
 final class AccountPickerHelpers {
+
+    static func rowInfo(
+        forAccount account: FinancialConnectionsPartnerAccount
+    ) -> (
+        accountName: String,
+        accountNumbers: String?,
+        balanceString: String?
+    ) {
+        return (
+            accountName: account.name,
+            accountNumbers: {
+                if let displayableAccountNumbers = account.displayableAccountNumbers {
+                   return "••••\(displayableAccountNumbers)"
+                } else {
+                    return nil
+                }
+            }(),
+            balanceString: {
+                if let balanceInfo = account.balanceInfo {
+                    return currencyString(currency: balanceInfo.currency, balanceAmount: balanceInfo.balanceAmount)
+                } else {
+                    return nil
+                }
+            }()
+        )
+    }
+
     static func rowTitles(
         forAccount account: FinancialConnectionsPartnerAccount,
         // caption, for networked accounts, will hide account numbers, so we should show account numbers in the title
@@ -36,10 +63,16 @@ final class AccountPickerHelpers {
         }
     }
 
-    static func currencyString(currency: String, balanceAmount: Int) -> String? {
+    // exposed for testing purposes
+    static func currencyString(
+        currency: String,
+        balanceAmount: Int,
+        locale: Locale = .current
+    ) -> String? {
         let numberFormatter = NumberFormatter()
         numberFormatter.currencyCode = currency
         numberFormatter.numberStyle = .currency
+        numberFormatter.locale = locale
         return numberFormatter.string(
             for: NSDecimalNumber.stp_fn_decimalNumber(withAmount: balanceAmount, currency: currency)
         )
@@ -93,18 +126,4 @@ extension NSDecimalNumber {
             "xpf",
         ]
     }
-}
-
-func buildRetrievingAccountsView() -> UIView {
-    return ReusableInformationView(
-        iconType: .loading,
-        title: STPLocalizedString(
-            "Connecting your bank",
-            "The title of the loading screen that appears when a user just logged into their bank account, and now is waiting for their bank accounts to load. Once the bank accounts are loaded, user will be able to pick the bank account they want to to use for things like payments."
-        ),
-        subtitle: STPLocalizedString(
-            "You're almost done.",
-            "The subtitle/description of the loading screen that appears when a user just logged into their bank account, and now is waiting for their bank accounts to load. Once the bank accounts are loaded, user will be able to pick the bank account they want to to use for things like payments."
-        )
-    )
 }

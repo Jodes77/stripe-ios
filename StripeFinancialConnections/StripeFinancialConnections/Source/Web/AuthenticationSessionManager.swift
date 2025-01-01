@@ -14,7 +14,7 @@ final class AuthenticationSessionManager: NSObject {
     // MARK: - Types
 
     enum Result {
-        case success
+        case success(returnUrl: URL)
         case webCancelled
         case nativeCancelled
         case redirect(url: URL)
@@ -35,7 +35,7 @@ final class AuthenticationSessionManager: NSObject {
 
     // MARK: - Public
 
-    func start(additionalQueryParameters: String? = nil) -> Promise<AuthenticationSessionManager.Result> {
+    func start(additionalQueryParameters: String?) -> Promise<AuthenticationSessionManager.Result> {
         let promise = Promise<AuthenticationSessionManager.Result>()
 
         guard let hostedAuthUrl = manifest.hostedAuthUrl else {
@@ -43,7 +43,8 @@ final class AuthenticationSessionManager: NSObject {
             return promise
         }
 
-        let urlString = hostedAuthUrl + (additionalQueryParameters ?? "")
+        let queryParameters = additionalQueryParameters ?? ""
+        let urlString = hostedAuthUrl + queryParameters
 
         guard let url = URL(string: urlString) else {
             promise.reject(with: FinancialConnectionsSheetError.unknown(debugDescription: "Malformed hosted auth URL"))
@@ -73,15 +74,17 @@ final class AuthenticationSessionManager: NSObject {
                     }
                     return
                 }
-
-                guard let returnUrlString = returnUrl?.absoluteString else {
+                guard let returnUrl = returnUrl else {
                     promise.reject(with: FinancialConnectionsSheetError.unknown(debugDescription: "Missing return URL"))
                     return
                 }
+                let returnUrlString = returnUrl.absoluteString
 
-                if returnUrlString == self.manifest.successUrl {
-                    promise.resolve(with: .success)
-                } else if returnUrlString == self.manifest.cancelUrl {
+                // `matchesSchemeHostAndPath` is necessary for instant debits which
+                // contains additional query parameters at the end of the `successUrl`
+                if returnUrl.matchesSchemeHostAndPath(of: URL(string: self.manifest.successUrl ?? ""))  {
+                    promise.resolve(with: .success(returnUrl: returnUrl))
+                } else if  returnUrl.matchesSchemeHostAndPath(of: URL(string: self.manifest.cancelUrl ?? ""))  {
                     promise.resolve(with: .webCancelled)
                 } else if returnUrlString.hasNativeRedirectPrefix,
                     let targetURL = URL(string: returnUrlString.droppingNativeRedirectPrefix())
@@ -137,5 +140,18 @@ extension AuthenticationSessionManager: ASWebAuthenticationPresentationContextPr
 
     func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
         return self.window ?? ASPresentationAnchor()
+    }
+}
+
+extension URL {
+    fileprivate func matchesSchemeHostAndPath(of otherURL: URL?) -> Bool {
+        guard let otherURL = otherURL else {
+            return false
+        }
+        return (
+            self.scheme == otherURL.scheme &&
+            self.host == otherURL.host &&
+            self.path == otherURL.path
+        )
     }
 }

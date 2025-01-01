@@ -19,6 +19,7 @@ class PaymentSheet_AddressTests: XCTestCase {
 
     func testManualAddressEntry() throws {
         var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.layout = .horizontal
         settings.uiStyle = .flowController
         settings.shippingInfo = .on
 
@@ -63,8 +64,8 @@ class PaymentSheet_AddressTests: XCTestCase {
         XCTAssertFalse(saveAddressButton.isEnabled)
         app.textFields["ZIP"].tap()
         app.typeText("94102")
-        app.textFields["Phone"].tap()
-        app.textFields["Phone"].typeText("5555555555")
+        app.textFields["Phone number"].tap()
+        app.textFields["Phone number"].typeText("5555555555")
 
         XCTAssertTrue(saveAddressButton.isEnabled)
         saveAddressButton.tap()
@@ -96,6 +97,7 @@ US
 
     func testAddressWithDefaults() throws {
         var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.layout = .horizontal
         settings.shippingInfo = .onWithDefaults
         settings.uiStyle = .flowController
 
@@ -132,6 +134,7 @@ US
 
     func testAddressAutoComplete_UnitedStates() throws {
         var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.layout = .horizontal
         settings.uiStyle = .flowController
         loadPlayground(
             app,
@@ -163,8 +166,8 @@ US
         XCTAssertEqual(app.textFields["ZIP"].value as! String, "94080")
 
         // Type in phone number
-        app.textFields["Phone"].tap()
-        app.textFields["Phone"].typeText("5555555555")
+        app.textFields["Phone number"].tap()
+        app.textFields["Phone number"].typeText("5555555555")
 
         // Type in the name to complete the form
         app.textFields["Full name"].tap()
@@ -187,6 +190,7 @@ US
     /// This test ensures we don't show auto complete for an unsupported country
     func testAddressAutoComplete_NewZeland() throws {
         var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.layout = .horizontal
         settings.uiStyle = .flowController
         loadPlayground(
             app,
@@ -231,8 +235,8 @@ US
         XCTAssertFalse(saveAddressButton.isEnabled)
         app.textFields["Postal code"].tap()
         app.typeText("7300")
-        app.textFields["Phone"].tap()
-        app.textFields["Phone"].typeText("5555555555")
+        app.textFields["Phone number"].tap()
+        app.textFields["Phone number"].typeText("5555555555")
         XCTAssertTrue(saveAddressButton.isEnabled)
         saveAddressButton.tap()
 
@@ -251,9 +255,10 @@ NZ
     func testPaymentSheetFlowControllerUpdatesShipping() {
 
             var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.layout = .horizontal
         settings.applePayEnabled = .off
         settings.apmsEnabled = .off
-        settings.linkEnabled = .off
+        settings.linkPassthroughMode = .passthrough
         settings.uiStyle = .flowController
         settings.shippingInfo = .on
             loadPlayground(
@@ -340,6 +345,7 @@ NZ
     func testManualAddressEntry_phoneCountryDoesPersist() throws {
 
             var settings = PaymentSheetTestPlaygroundSettings.defaultValues()
+        settings.layout = .horizontal
         settings.uiStyle = .flowController
             loadPlayground(
                 app,

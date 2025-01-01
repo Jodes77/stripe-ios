@@ -22,6 +22,10 @@ protocol AttachLinkedPaymentAccountViewControllerDelegate: AnyObject {
     func attachLinkedPaymentAccountViewControllerDidSelectManualEntry(
         _ viewController: AttachLinkedPaymentAccountViewController
     )
+    func attachLinkedPaymentAccountViewController(
+        _ viewController: AttachLinkedPaymentAccountViewController,
+        didReceiveEvent event: FinancialConnectionsEvent
+    )
 }
 
 final class AttachLinkedPaymentAccountViewController: UIViewController {
@@ -77,13 +81,8 @@ final class AttachLinkedPaymentAccountViewController: UIViewController {
     }
 
     private func attachLinkedAccountIdToLinkAccountSession() {
-        let linkingAccountsLoadingView = LinkingAccountsLoadingView(
-            // the `AttachLinkedPaymentAccount` flow will only ever
-            // have one account
-            numberOfSelectedAccounts: 1,
-            businessName: dataSource.manifest.businessName
-        )
-        view.addAndPinSubviewToSafeArea(linkingAccountsLoadingView)
+        let loadingView = SpinnerView(theme: dataSource.manifest.theme)
+        view.addAndPinSubviewToSafeArea(loadingView)
 
         let pollingStartDate = Date()
         dataSource.attachLinkedAccountIdToLinkAccountSession()
@@ -119,7 +118,7 @@ final class AttachLinkedPaymentAccountViewController: UIViewController {
                 // screen, and we don't want to show a blank background
                 // while we transition to the next pane
                 case .failure(let error):
-                    linkingAccountsLoadingView.removeFromSuperview()
+                    loadingView.removeFromSuperview()
                     if let error = error as? StripeError,
                         case .apiError(let apiError) = error,
                         let extraFields = apiError.allResponseFields["extra_fields"] as? [String: Any],
@@ -128,6 +127,7 @@ final class AttachLinkedPaymentAccountViewController: UIViewController {
                     {
                         let errorView = AccountNumberRetrievalErrorView(
                             institution: self.dataSource.institution,
+                            theme: self.dataSource.manifest.theme,
                             didSelectAnotherBank: self.didSelectAnotherBank,
                             didSelectEnterBankDetailsManually: self.didSelectManualEntry
                         )
@@ -143,6 +143,7 @@ final class AttachLinkedPaymentAccountViewController: UIViewController {
                         // something unknown happened here, allow a retry
                         let errorView = AccountPickerAccountLoadErrorView(
                             institution: self.dataSource.institution,
+                            theme: self.dataSource.manifest.theme,
                             didSelectAnotherBank: self.didSelectAnotherBank,
                             didSelectTryAgain: self.didSelectTryAgain,
                             didSelectEnterBankDetailsManually: self.didSelectManualEntry

@@ -51,7 +51,9 @@ class ExampleCustomCheckoutViewController: UIViewController {
                 var configuration = PaymentSheet.Configuration()
                 configuration.merchantDisplayName = "Example, Inc."
                 configuration.applePay = .init(
-                    merchantId: "com.foo.example", merchantCountryCode: "US")
+                    merchantId: "merchant.com.stripe.umbrella.test", // Be sure to use your own merchant ID here!
+                    merchantCountryCode: "US"
+                )
                 configuration.customer = .init(
                     id: customerId, ephemeralKeySecret: customerEphemeralKeySecret)
                 configuration.returnURL = "payments-example://stripe-redirect"
@@ -107,7 +109,7 @@ class ExampleCustomCheckoutViewController: UIViewController {
         // MARK: Update the payment method and buy buttons
         if let paymentOption = paymentSheetFlowController.paymentOption {
             paymentMethodButton.setTitle(paymentOption.label, for: .normal)
-            paymentMethodButton.setTitleColor(.black, for: .normal)
+            paymentMethodButton.setTitleColor(.label, for: .normal)
             paymentMethodImage.image = paymentOption.image
             buyButton.isEnabled = true
         } else {

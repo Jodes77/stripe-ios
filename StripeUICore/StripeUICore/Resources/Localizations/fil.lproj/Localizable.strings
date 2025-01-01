@@ -10,11 +10,17 @@
 
 "Area" = "Lugar";
 
+"BLIK code" = "BLIK code";
+
 "BSB number" = "Numero ng BSB";
+
+"Bank account •••• %@" = "Account sa bangko •••• %@";
 
 "Billing address is same as shipping" = "Ang address sa billing ay kapareho ng sa pagpapadala";
 
 "Cancel" = "Kanselahin";
+
+"Card brand" = "Brand ng card";
 
 "City" = "Siyudad";
 
@@ -37,6 +43,8 @@
 "District" = "Distrito";
 
 "Do Si" = "Do Si";
+
+"Do you want to close this form?" = "Gusto mo bang isara ang form na ito?";
 
 "Done" = "Tapos Na";
 
@@ -76,7 +84,7 @@
 
 "Parish" = "Parokya";
 
-"Phone" = "Telepono";
+"Phone number" = "Numero ng telepono";
 
 "Postal code" = "Postal code";
 
@@ -86,11 +94,15 @@
 
 "Remove" = "Alisin";
 
-"Remove bank account" = "Alisin ang account sa bangko";
+"Remove bank account?" = "Alisin ang account sa bangko?";
 
-"Remove bank account ending in %@" = "Alisin ang account sa bangko na nagtatapos sa %@";
+"Remove card" = "Alisin ang kard";
 
 "Search" = "Maghanap";
+
+"Select card brand (optional)" = "Pumili ng brand ng kard (opsyonal)";
+
+"Sort code" = "Sort code";
 
 "State" = "State";
 
@@ -104,6 +116,8 @@
 
 "The account number you entered is incomplete." = "Ang numero ng account na inilagay mo ay kulang.";
 
+"The sort code you entered is invalid." = "Ang sort code na inilagay mo ay hindi valid.";
+
 "Town or city" = "Bayan o siyudad";
 
 "UPI ID" = "UPI ID";
@@ -112,9 +126,15 @@
 
 "Use rotor to access links" = "Gumamit ng rotor para i-access ang mga link";
 
+"Your BLIK code is incomplete." = "Ang iyong BLIK code ay kulang.";
+
+"Your BLIK code is invalid." = "Ang iyong BLIK code ay hindi valid.";
+
 "Your ZIP is incomplete." = "Ang iyong ZIP ay di kumpleto.";
 
 "Your email is invalid." = "Ang iyong email ay imbalido.";
+
+"Your payment information will not be saved." = "Hindi mase-save ang iyong impormasyon ng pagbabayad.";
 
 "Your postal code is incomplete." = "Ang iyong postal code ay di kumpleto.";
 

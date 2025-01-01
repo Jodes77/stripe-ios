@@ -78,11 +78,14 @@ extension ConsumerSession {
 extension ConsumerSession {
     class func lookupSession(
         for email: String?,
+        emailSource: EmailSource?,
+        sessionID: String,
         with apiClient: STPAPIClient = STPAPIClient.shared,
         cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
+        useMobileEndpoints: Bool,
         completion: @escaping (Result<ConsumerSession.LookupResponse, Error>) -> Void
     ) {
-        apiClient.lookupConsumerSession(for: email, cookieStore: cookieStore, completion: completion)
+        apiClient.lookupConsumerSession(for: email, emailSource: emailSource, sessionID: sessionID, cookieStore: cookieStore, useMobileEndpoints: useMobileEndpoints, completion: completion)
     }
 
     class func signUp(
@@ -92,8 +95,8 @@ extension ConsumerSession {
         legalName: String?,
         countryCode: String?,
         consentAction: String?,
+        useMobileEndpoints: Bool,
         with apiClient: STPAPIClient = STPAPIClient.shared,
-        cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
         completion: @escaping (Result<SessionWithPublishableKey, Error>) -> Void
     ) {
         apiClient.createConsumer(
@@ -103,7 +106,7 @@ extension ConsumerSession {
             legalName: legalName,
             countryCode: countryCode,
             consentAction: consentAction,
-            cookieStore: cookieStore,
+            useMobileEndpoints: useMobileEndpoints,
             completion: completion
         )
     }
@@ -115,20 +118,24 @@ extension ConsumerSession {
         completion: @escaping (Result<ConsumerPaymentDetails, Error>) -> Void
     ) {
         guard paymentMethodParams.type == .card,
-              let billingDetails = paymentMethodParams.billingDetails,
               let cardParams = paymentMethodParams.card else {
             DispatchQueue.main.async {
-                assertionFailure()
                 completion(.failure(NSError.stp_genericConnectionError()))
             }
             return
         }
 
+        let country = paymentMethodParams.nonnil_billingDetails.nonnil_address.country
+        if country?.isBlank ?? true {
+            // Country is the only required billing detail. If it's empty, fall back to the locale country
+            paymentMethodParams.nonnil_billingDetails.nonnil_address.country = Locale.current.stp_regionCode
+        }
+
         apiClient.createPaymentDetails(
             for: clientSecret,
             cardParams: cardParams,
-            billingEmailAddress: billingDetails.email ?? emailAddress,
-            billingDetails: billingDetails,
+            billingEmailAddress: paymentMethodParams.nonnil_billingDetails.email ?? emailAddress,
+            billingDetails: paymentMethodParams.nonnil_billingDetails,
             consumerAccountPublishableKey: consumerAccountPublishableKey,
             completion: completion)
     }
@@ -142,6 +149,38 @@ extension ConsumerSession {
         apiClient.createPaymentDetails(
             for: clientSecret,
             linkedAccountId: linkedAccountId,
+            consumerAccountPublishableKey: consumerAccountPublishableKey,
+            completion: completion)
+    }
+
+    func startVerification(
+        type: VerificationSession.SessionType = .sms,
+        locale: Locale = .autoupdatingCurrent,
+        with apiClient: STPAPIClient = STPAPIClient.shared,
+        cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
+        consumerAccountPublishableKey: String?,
+        completion: @escaping (Result<ConsumerSession, Error>) -> Void
+    ) {
+        apiClient.startVerification(
+            for: clientSecret,
+            type: type,
+            locale: locale,
+            cookieStore: cookieStore,
+            consumerAccountPublishableKey: consumerAccountPublishableKey,
+            completion: completion)
+    }
+
+    func confirmSMSVerification(
+        with code: String,
+        with apiClient: STPAPIClient = STPAPIClient.shared,
+        cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
+        consumerAccountPublishableKey: String?,
+        completion: @escaping (Result<ConsumerSession, Error>) -> Void
+    ) {
+        apiClient.confirmSMSVerification(
+            for: clientSecret,
+            with: code,
+            cookieStore: cookieStore,
             consumerAccountPublishableKey: consumerAccountPublishableKey,
             completion: completion)
     }
@@ -195,13 +234,27 @@ extension ConsumerSession {
             completion: completion)
     }
 
+    func sharePaymentDetails(
+        with apiClient: STPAPIClient = STPAPIClient.shared,
+        id: String,
+        cvc: String?,
+        consumerAccountPublishableKey: String?,
+        completion: @escaping (Result<PaymentDetailsShareResponse, Error>) -> Void
+    ) {
+        apiClient.sharePaymentDetails(
+            for: clientSecret,
+            id: id,
+            consumerAccountPublishableKey: consumerAccountPublishableKey,
+            cvc: cvc,
+            completion: completion)
+    }
+
     func logout(
         with apiClient: STPAPIClient = STPAPIClient.shared,
         cookieStore: LinkCookieStore = LinkSecureCookieStore.shared,
         consumerAccountPublishableKey: String?,
         completion: @escaping (Result<ConsumerSession, Error>) -> Void
     ) {
-        // Logout from server.
         apiClient.logout(
             consumerSessionClientSecret: clientSecret,
             cookieStore: cookieStore,

@@ -12,7 +12,11 @@ import SafariServices
 import UIKit
 
 protocol ConsentViewControllerDelegate: AnyObject {
-    func consentViewControllerDidSelectManuallyVerify(_ viewController: ConsentViewController)
+    func consentViewController(
+        _ viewController: ConsentViewController,
+        didRequestNextPane nextPane: FinancialConnectionsSessionManifest.NextPane,
+        nextPaneOrDrawerOnSecondaryCta: String?
+    )
     func consentViewController(
         _ viewController: ConsentViewController,
         didConsentWithManifest manifest: FinancialConnectionsSessionManifest
@@ -26,11 +30,11 @@ class ConsentViewController: UIViewController {
 
     private lazy var titleLabel: AttributedTextView = {
         let titleLabel = AttributedTextView(
-            font: .heading(.large),
-            boldFont: .heading(.large),
-            linkFont: .heading(.large),
-            textColor: .textPrimary,
-            alignCenter: dataSource.merchantLogo != nil
+            font: .heading(.extraLarge),
+            boldFont: .heading(.extraLarge),
+            linkFont: .heading(.extraLarge),
+            textColor: .textDefault,
+            alignment: .center
         )
         titleLabel.setText(
             dataSource.consent.title,
@@ -48,6 +52,7 @@ class ConsentViewController: UIViewController {
             aboveCtaText: dataSource.consent.aboveCta,
             ctaText: dataSource.consent.cta,
             belowCtaText: dataSource.consent.belowCta,
+            theme: dataSource.manifest.theme,
             didSelectAgree: { [weak self] in
                 self?.didSelectAgree()
             },
@@ -56,6 +61,7 @@ class ConsentViewController: UIViewController {
             }
         )
     }()
+    private var consentLogoView: ConsentLogoView?
 
     init(dataSource: ConsentDataSource) {
         self.dataSource = dataSource
@@ -70,36 +76,63 @@ class ConsentViewController: UIViewController {
         super.viewDidLoad()
         view.backgroundColor = .customBackgroundColor
 
-        let paneLayoutView = PaneWithCustomHeaderLayoutView(
-            headerView: {
+        let paneLayoutView = PaneLayoutView(
+            contentView: {
+                let verticalStackView = HitTestStackView()
+                verticalStackView.axis = .vertical
+                verticalStackView.spacing = 24
+                verticalStackView.isLayoutMarginsRelativeArrangement = true
+                verticalStackView.directionalLayoutMargins = NSDirectionalEdgeInsets(
+                    top: 24,
+                    leading: 24,
+                    bottom: 8,
+                    trailing: 24
+                )
                 if let merchantLogo = dataSource.merchantLogo {
-                    let stackView = UIStackView(
-                        arrangedSubviews: [
-                            ConsentLogoView(merchantLogo: merchantLogo),
-                            titleLabel,
-                        ]
+                    let showsAnimatedDots = dataSource.manifest.isLinkWithStripe != true
+                    let consentLogoView = ConsentLogoView(
+                        merchantLogo: merchantLogo,
+                        showsAnimatedDots: showsAnimatedDots
                     )
-                    stackView.axis = .vertical
-                    stackView.spacing = 24
-                    stackView.alignment = .center
-                    return stackView
-                } else {
-                    return titleLabel
+                    self.consentLogoView = consentLogoView
+                    verticalStackView.addArrangedSubview(consentLogoView)
                 }
+                verticalStackView.addArrangedSubview(titleLabel)
+                verticalStackView.addArrangedSubview(
+                    ConsentBodyView(
+                        bulletItems: dataSource.consent.body.bullets,
+                        didSelectURL: { [weak self] url in
+                            self?.didSelectURLInTextFromBackend(url)
+                        }
+                    )
+                )
+                return verticalStackView
             }(),
-            headerTopMargin: 16,
-            contentView: ConsentBodyView(
-                bulletItems: dataSource.consent.body.bullets,
-                didSelectURL: { [weak self] url in
-                    self?.didSelectURLInTextFromBackend(url)
-                }
-            ),
-            headerAndContentSpacing: 24.0,
             footerView: footerView
         )
         paneLayoutView.addTo(view: view)
 
         dataSource.analyticsClient.logPaneLoaded(pane: .consent)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(appWillEnterForeground),
+            name: UIApplication.willEnterForegroundNotification,
+            object: nil
+        )
+    }
+
+    override func viewWillAppear(_ animated: Bool) {
+        super.viewWillAppear(animated)
+        // this fixes an issue where presenting a UIViewController
+        // on top of ConsentViewController would stop the dot animation
+        consentLogoView?.animateDots()
+    }
+
+    @objc private func appWillEnterForeground() {
+        // Fixes an issue where the dot animation was stopped when the app
+        // was backgrounded, then reopened.
+        consentLogoView?.animateDots()
     }
 
     private func didSelectAgree() {
@@ -134,44 +167,59 @@ class ConsentViewController: UIViewController {
             url: url,
             pane: .consent,
             analyticsClient: dataSource.analyticsClient,
-            handleStripeScheme: { urlHost in
-                if urlHost == "manual-entry" {
-                    delegate?.consentViewControllerDidSelectManuallyVerify(self)
-                } else if urlHost == "data-access-notice" {
-                    let dataAccessNoticeModel = dataSource.consent.dataAccessNotice
-                    let consentBottomSheetModel = ConsentBottomSheetModel(
-                        title: dataAccessNoticeModel.title,
-                        subtitle: dataAccessNoticeModel.subtitle,
-                        body: ConsentBottomSheetModel.Body(
-                            bullets: dataAccessNoticeModel.body.bullets
-                        ),
-                        extraNotice: dataAccessNoticeModel.connectedAccountNotice,
-                        learnMore: dataAccessNoticeModel.learnMore,
-                        cta: dataAccessNoticeModel.cta
+            handleURL: { urlHost, nextPaneOrDrawerOnSecondaryCta in
+                guard let urlHost, let address = StripeSchemeAddress(rawValue: urlHost) else {
+                    self.dataSource
+                        .analyticsClient
+                        .logUnexpectedError(
+                            FinancialConnectionsSheetError.unknown(
+                                debugDescription: "Unknown Stripe-scheme URL detected: \(urlHost ?? "nil")."
+                            ),
+                            errorName: "ConsentStripeURLError",
+                            pane: .consent
+                        )
+                    return
+                }
+
+                switch address {
+                case .manualEntry:
+                    delegate?.consentViewController(
+                        self,
+                        didRequestNextPane: .manualEntry,
+                        nextPaneOrDrawerOnSecondaryCta: nextPaneOrDrawerOnSecondaryCta
                     )
-                    ConsentBottomSheetViewController.present(
-                        withModel: consentBottomSheetModel,
-                        didSelectUrl: { [weak self] url in
-                            self?.didSelectURLInTextFromBackend(url)
-                        }
-                    )
-                } else if urlHost == "legal-details-notice" {
+                case .dataAccessNotice:
+                    if let dataAccessNotice = dataSource.consent.dataAccessNotice {
+                        let dataAccessNoticeViewController = DataAccessNoticeViewController(
+                            dataAccessNotice: dataAccessNotice,
+                            theme: dataSource.manifest.theme,
+                            didSelectUrl: { [weak self] url in
+                                self?.didSelectURLInTextFromBackend(url)
+                            }
+                        )
+                        dataAccessNoticeViewController.present(on: self)
+                    }
+                case .legalDatailsNotice:
                     let legalDetailsNoticeModel = dataSource.consent.legalDetailsNotice
-                    let consentBottomSheetModel = ConsentBottomSheetModel(
-                        title: legalDetailsNoticeModel.title,
-                        subtitle: nil,
-                        body: ConsentBottomSheetModel.Body(
-                            bullets: legalDetailsNoticeModel.body.bullets
-                        ),
-                        extraNotice: nil,
-                        learnMore: legalDetailsNoticeModel.learnMore,
-                        cta: legalDetailsNoticeModel.cta
-                    )
-                    ConsentBottomSheetViewController.present(
-                        withModel: consentBottomSheetModel,
+                    let legalDetailsNoticeViewController = LegalDetailsNoticeViewController(
+                        legalDetailsNotice: legalDetailsNoticeModel,
+                        theme: dataSource.manifest.theme,
                         didSelectUrl: { [weak self] url in
                             self?.didSelectURLInTextFromBackend(url)
                         }
+                    )
+                    legalDetailsNoticeViewController.present(on: self)
+                case .linkAccountPicker:
+                    delegate?.consentViewController(
+                        self,
+                        didRequestNextPane: .linkAccountPicker,
+                        nextPaneOrDrawerOnSecondaryCta: nextPaneOrDrawerOnSecondaryCta
+                    )
+                case .linkLogin:
+                    delegate?.consentViewController(
+                        self,
+                        didRequestNextPane: .networkingLinkLoginWarmup,
+                        nextPaneOrDrawerOnSecondaryCta: nextPaneOrDrawerOnSecondaryCta
                     )
                 }
             }

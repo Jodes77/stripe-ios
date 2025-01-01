@@ -11,42 +11,32 @@
 // MARK: - PaymentMethodElement protocol
 /**
  This allows a user of an Element to collect all fields in the Element hierarchy into an instance of `IntentConfirmParams`.
+ This exists separate from `Element` because `IntentConfirmParams` is a type specific to `StripePaymentSheet`, whereas `Element` is shared
+ across modules that don't have this type.
  
  - Remark:In practice, only "leaf" Elements - text fields, drop downs, etc. - have any user data to update params with. These elements can be wrapped in `PaymentMethodElementWrapper`.
  Other elements can rely on the default implementation provided in this file.
  */
 protocol PaymentMethodElement: Element {
-    /// Modify the params with default values.
-    ///
-    /// This method is called before `updateParams(params:)` and should be used to populate `params` with any necessary
-    /// default values, these can include values for fields not included in the element hierarchy.
-    func applyDefaults(params: IntentConfirmParams) -> IntentConfirmParams
-
     /// Modify the params according to your input, or return nil if invalid.
     /// - Note: This is called on the Element hierarchy in depth-first search order.
     func updateParams(params: IntentConfirmParams) -> IntentConfirmParams?
 }
 
+extension PaymentMethodElement {
+    func clearTextFields() {
+        for element in getAllUnwrappedSubElements() {
+            if let element = element as? TextFieldElement {
+                element.setText("")
+            } else if let element = element as? CVCRecollectionElement {
+                element.clearTextFields()
+            }
+        }
+    }
+}
+
 // MARK: - Default implementations
 extension ContainerElement {
-    func applyDefaults(params: IntentConfirmParams) -> IntentConfirmParams {
-        applyDefaultsRecursively(params: params)
-    }
-
-    func applyDefaultsRecursively(params: IntentConfirmParams) -> IntentConfirmParams {
-        return elements.filter({ $0.view.isHidden == false })
-            .reduce(params) { (params: IntentConfirmParams, element: Element) in
-                switch element {
-                case let element as PaymentMethodElement:
-                    return element.applyDefaults(params: params)
-                case let element as ContainerElement:
-                    return element.applyDefaults(params: params)
-                default:
-                    return params
-                }
-            }
-    }
-
     func updateParams(params: IntentConfirmParams) -> IntentConfirmParams? {
         return elements.filter({ $0.view.isHidden == false })
             .reduce(params) { (params: IntentConfirmParams?, element: Element) in
@@ -65,24 +55,12 @@ extension ContainerElement {
     }
 }
 
-extension FormElement: PaymentMethodElement {
-    func applyDefaults(params: IntentConfirmParams) -> IntentConfirmParams {
-        applyDefaultsRecursively(params: params)
-    }
-}
+extension FormElement: PaymentMethodElement {}
 
-extension SectionElement: PaymentMethodElement {
-    func applyDefaults(params: IntentConfirmParams) -> IntentConfirmParams {
-        applyDefaultsRecursively(params: params)
-    }
-}
+extension SectionElement: PaymentMethodElement {}
 
 extension StaticElement: PaymentMethodElement {
     func updateParams(params: IntentConfirmParams) -> IntentConfirmParams? {
         return params
     }
-}
-
-extension PaymentMethodElement {
-    func applyDefaults(params: IntentConfirmParams) -> IntentConfirmParams { params }
 }

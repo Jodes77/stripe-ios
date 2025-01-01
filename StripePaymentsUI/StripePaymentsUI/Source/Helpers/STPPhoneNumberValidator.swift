@@ -7,29 +7,10 @@
 //
 
 import Foundation
+@_spi(STP) import StripeCore
 @_spi(STP) import StripePayments
-@_spi(STP) import StripeUICore
 
 @_spi(STP) public class STPPhoneNumberValidator: NSObject {
-
-    class func stringIsValidPhoneNumber(_ string: String) -> Bool {
-        if string == "" {
-            return false
-        }
-        return self.stringIsValidPhoneNumber(string, forCountryCode: nil)
-    }
-
-    @_spi(STP) public class func stringIsValidPhoneNumber(
-        _ string: String,
-        forCountryCode nillableCode: String?
-    ) -> Bool {
-        let countryCode = self.countryCodeOrCurrentLocaleCountry(from: nillableCode)
-        if let phoneNumber = PhoneNumber(number: string, countryCode: countryCode) {
-            return phoneNumber.isComplete
-        } else {
-            return !string.isEmpty
-        }
-    }
 
     @objc(formattedSanitizedPhoneNumberForString:) class func formattedSanitizedPhoneNumber(
         for string: String
@@ -86,7 +67,7 @@ import Foundation
     class func countryCodeOrCurrentLocaleCountry(from nillableCode: String?) -> String {
         var countryCode = nillableCode
         if countryCode == nil {
-            countryCode = NSLocale.autoupdatingCurrent.regionCode
+            countryCode = NSLocale.autoupdatingCurrent.stp_regionCode
         }
         return countryCode ?? ""
     }

@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import SafariServices
 @_spi(STP) import StripeCore
 @_spi(STP) import StripePayments
 @_spi(STP) import StripePaymentsUI
@@ -24,17 +25,15 @@ class PollingViewController: UIViewController {
     // MARK: State
 
     private var oneSecondTimer: Timer?
-    private let currentAction: STPPaymentHandlerActionParams
+    private let currentAction: STPPaymentHandlerPaymentIntentActionParams
     private let appearance: PaymentSheet.Appearance
     private let viewModel: PollingViewModel
+    private let safariViewController: SFSafariViewController?
 
     private lazy var intentPoller: IntentStatusPoller = {
-        guard let currentAction = currentAction as? STPPaymentHandlerPaymentIntentActionParams,
-              let clientSecret = currentAction.paymentIntent?.clientSecret else { fatalError() }
-
-        let intentPoller = IntentStatusPoller(apiClient: currentAction.apiClient,
-                                              clientSecret: clientSecret,
-                                              maxRetries: 12)
+        let intentPoller = IntentStatusPoller(retryInterval: viewModel.retryInterval,
+                                              intentRetriever: currentAction.apiClient,
+                                              clientSecret: currentAction.paymentIntent.clientSecret)
         intentPoller.delegate = self
         return intentPoller
     }()
@@ -160,10 +159,11 @@ class PollingViewController: UIViewController {
 
     // MARK: Overrides
 
-    init(currentAction: STPPaymentHandlerActionParams, viewModel: PollingViewModel, appearance: PaymentSheet.Appearance) {
+    init(currentAction: STPPaymentHandlerPaymentIntentActionParams, viewModel: PollingViewModel, appearance: PaymentSheet.Appearance, safariViewController: SFSafariViewController? = nil) {
         self.currentAction = currentAction
         self.appearance = appearance
         self.viewModel = viewModel
+        self.safariViewController = safariViewController
 
         super.init(nibName: nil, bundle: nil)
     }
@@ -177,8 +177,12 @@ class PollingViewController: UIViewController {
         // disable swipe to dismiss
         isModalInPresentation = true
 
+        #if canImport(CompositorServices)
+        let height = parent?.view.frame.size.height ?? 600 // An arbitrary value for visionOS
+        #else
         // Height of the polling view controller is either the height of the parent, or the height of the screen (flow controller use case)
         let height = parent?.view.frame.size.height ?? UIScreen.main.bounds.height
+        #endif
         let stackView = UIStackView(arrangedSubviews: [formStackView])
         stackView.spacing = PaymentSheetUI.defaultPadding
         stackView.axis = .vertical
@@ -207,8 +211,8 @@ class PollingViewController: UIViewController {
                                   repeats: true)
         }
 
-        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
-            self.intentPoller.beginPolling()
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) { [weak self] in
+            self?.intentPoller.beginPolling()
         }
 
         NotificationCenter.default.addObserver(self, selector: #selector(didEnterBackground), name: UIApplication.didEnterBackgroundNotification, object: nil)
@@ -226,14 +230,18 @@ class PollingViewController: UIViewController {
     // MARK: Handlers
 
     @objc func didTapCancel() {
-        currentAction.complete(with: .canceled, error: nil)
-        dismiss()
+        dismiss {
+            // Wait a short amount of time before completing the action to ensure smooth animations
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.2) {
+                self.currentAction.complete(with: .canceled, error: nil)
+            }
+        }
     }
 
-    private func dismiss() {
+    private func dismiss(completion: (() -> Void)? = nil) {
         if let authContext = currentAction.authenticationContext as? PaymentSheetAuthenticationContext {
             authContext.authenticationContextWillDismiss?(self)
-            authContext.dismiss(self)
+            authContext.dismiss(self, completion: completion)
         }
 
         oneSecondTimer?.invalidate()
@@ -272,22 +280,30 @@ class PollingViewController: UIViewController {
             self.cancelButton.isHidden = true
             self.titleLabel.text = .Localized.payment_failed
             self.instructionLabel.text = .Localized.please_go_back
-            self.navigationBar.setStyle(.back)
+            self.navigationBar.setStyle(.back(showAdditionalButton: false))
             self.intentPoller.suspendPolling()
             self.oneSecondTimer?.invalidate()
+
+            // If the intent is canceled while a web view is presented, we must dismiss it before we can complete the action with .canceled so STPPaymentHandler can properly update its state
+            self.safariViewController?.dismiss(animated: true)
             self.currentAction.complete(with: .canceled, error: nil)
         }
     }
 
     // Called after the timer expires to wrap up polling
     private func finishPolling() {
+        self.intentPoller.suspendPolling()
+
         // Do one last force poll after deadline
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { [weak self] in
             guard let self = self else { return }
-            self.intentPoller.forcePoll()
-            // If we don't get a terminal status back after 20 seconds from the previous force poll, set error state to suspend polling.
-            // This could occur if network connections are unreliable
-            DispatchQueue.main.asyncAfter(deadline: .now() + 20, execute: self.setErrorStateWorkItem)
+            self.intentPoller.pollOnce { [weak self] status in
+                // If the last poll doesn't show a succeeded on the intent, show the error UI
+                // In the case of a success the delegate will be notified and the UI will be updated accordingly
+                if status != .succeeded {
+                    self?.pollingState = .error
+                }
+            }
         }
     }
 
@@ -328,13 +344,12 @@ extension PollingViewController: SheetNavigationBarDelegate {
 
 extension PollingViewController: IntentStatusPollerDelegate {
     func didUpdate(paymentIntent: STPPaymentIntent) {
-        guard let currentAction = currentAction as? STPPaymentHandlerPaymentIntentActionParams else { return }
-
         if paymentIntent.status == .succeeded {
             setErrorStateWorkItem.cancel() // cancel the error work item incase it was scheduled
             currentAction.paymentIntent = paymentIntent // update the local copy of the intent with the latest from the server
-            currentAction.complete(with: .succeeded, error: nil)
-            dismiss()
+            dismiss {
+                self.currentAction.complete(with: .succeeded, error: nil)
+            }
         } else if paymentIntent.status != .requiresAction {
             // an error occured to take the intent out of requires action
             // update polling state to indicate that we have encountered an error

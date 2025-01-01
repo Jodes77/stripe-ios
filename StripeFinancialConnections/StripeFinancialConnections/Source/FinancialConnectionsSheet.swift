@@ -10,7 +10,6 @@ import UIKit
 
 /**
  A drop-in class that presents a sheet for a user to connect their financial accounts.
- This class is in beta; see https://stripe.com/docs/financial-connections for access
  */
 final public class FinancialConnectionsSheet {
 
@@ -27,17 +26,22 @@ final public class FinancialConnectionsSheet {
     }
 
     @frozen public enum TokenResult {
-        // User completed the financialConnections session
+        /// User completed the financialConnections session
         case completed(
             result: (
                 session: StripeAPI.FinancialConnectionsSession,
                 token: StripeAPI.BankAccountToken?
             )
         )
-        // Failed with error
+        /// Failed with error
         case failed(error: Error)
-        // User canceled out of the financialConnections session
+        /// User canceled out of the financialConnections session
         case canceled
+
+        /// Convenience initializer that extracts token from session
+        static func completed(session: StripeAPI.FinancialConnectionsSession) -> Self {
+            .completed(result: (session: session, token: session.bankAccountToken))
+        }
     }
 
     // MARK: - Properties
@@ -52,6 +56,15 @@ final public class FinancialConnectionsSheet {
     /// get back to your app after completing authentication in another app (such as bank app or Safari).
     public let returnURL: String?
 
+    /// The `onEvent` closure is triggered upon the occurrence of specific events
+    /// during the process of a user connecting their financial accounts.
+    ///
+    /// Refer to `FinancialConnectionsEvent.Name` for a list of possible event types.
+    ///
+    /// Every `FinancialConnectionsEvent` can carry additional metadata,
+    /// the content of which can vary based on the specific type of occurring event.
+    public var onEvent: ((FinancialConnectionsEvent) -> Void)?
+
     /// The APIClient instance used to make requests to Stripe
     public var apiClient: STPAPIClient = STPAPIClient.shared {
         didSet {
@@ -60,11 +73,14 @@ final public class FinancialConnectionsSheet {
     }
 
     /// Completion block called when the sheet is closed or fails to open
-    private var completion: ((Result) -> Void)?
+    private var completion: ((HostControllerResult) -> Void)?
 
     private var hostController: HostController?
 
     private var wrapperViewController: ModalPresentationWrapperViewController?
+
+    // Any additional Elements context useful for the Financial Connections SDK.
+    @_spi(STP) public var elementsSessionContext: StripeCore.ElementsSessionContext?
 
     // Analytics client to use for logging analytics
     @_spi(STP) public let analyticsClient: STPAnalyticsClientProtocol
@@ -108,7 +124,7 @@ final public class FinancialConnectionsSheet {
         present(from: presentingViewController) { result in
             switch result {
             case .completed(let session):
-                completion(.completed(result: (session: session, token: session.bankAccountToken)))
+                completion(.completed(session: session))
             case .failed(let error):
                 completion(.failed(error: error))
             case .canceled:
@@ -127,8 +143,46 @@ final public class FinancialConnectionsSheet {
         from presentingViewController: UIViewController,
         completion: @escaping (Result) -> Void
     ) {
+        present(
+            from: presentingViewController,
+            completion: { hostControllerResult in
+                switch hostControllerResult {
+                case .completed(let completedResult):
+                    switch completedResult {
+                    case .financialConnections(let session):
+                        completion(.completed(session: session))
+                    case .instantDebits(let linkedBank):
+                        // TODO(mats): Add support for instant debits.
+                        let errorDescription = "Instant Debits is not currently supported via this interface."
+                        let sessionInfo =
+                        """
+                        paymentMethodId=\(linkedBank.paymentMethod.id)
+                        bankName=\(linkedBank.bankName ?? "N/A")
+                        last4=\(linkedBank.last4 ?? "N/A")
+                        """
+
+                        completion(
+                            .failed(
+                                error: FinancialConnectionsSheetError
+                                    .unknown(debugDescription: "\(errorDescription)\n\n\(sessionInfo)")
+                            )
+                        )
+                    }
+                case .canceled:
+                    completion(.canceled)
+                case .failed(let error):
+                    completion(.failed(error: error))
+                }
+            }
+        )
+    }
+
+    @_spi(STP) public func present(
+        from presentingViewController: UIViewController,
+        completion: @escaping (HostControllerResult) -> Void
+    ) {
         // Overwrite completion closure to retain self until called
-        let completion: (Result) -> Void = { result in
+        let completion: (HostControllerResult) -> Void = { result in
             self.analyticsClient.log(
                 analytic: FinancialConnectionsSheetCompletionAnalytic.make(
                     clientSecret: self.financialConnectionsSessionClientSecret,
@@ -165,9 +219,12 @@ final public class FinancialConnectionsSheet {
             }
         }
 
+        let financialConnectionsApiClient = FinancialConnectionsAPIClient(apiClient: apiClient)
         hostController = HostController(
-            api: apiClient,
+            apiClient: financialConnectionsApiClient,
+            analyticsClientV1: analyticsClient,
             clientSecret: financialConnectionsSessionClientSecret,
+            elementsSessionContext: elementsSessionContext,
             returnURL: returnURL,
             publishableKey: apiClient.publishableKey,
             stripeAccount: apiClient.stripeAccount
@@ -207,7 +264,11 @@ final public class FinancialConnectionsSheet {
 
 /// :nodoc:
 extension FinancialConnectionsSheet: HostControllerDelegate {
-    func hostController(_ hostController: HostController, viewController: UIViewController, didFinish result: Result) {
+    func hostController(
+        _ hostController: HostController,
+        viewController: UIViewController,
+        didFinish result: HostControllerResult
+    ) {
         viewController.dismiss(
             animated: true,
             completion: {
@@ -224,6 +285,10 @@ extension FinancialConnectionsSheet: HostControllerDelegate {
                 }
             }
         )
+    }
+
+    func hostController(_ hostController: HostController, didReceiveEvent event: FinancialConnectionsEvent) {
+        onEvent?(event)
     }
 }
 

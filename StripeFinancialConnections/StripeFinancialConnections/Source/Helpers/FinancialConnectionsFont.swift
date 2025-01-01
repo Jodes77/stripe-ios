@@ -26,6 +26,8 @@ struct FinancialConnectionsFont {
         case medium
         /// 24 size / 32 line height / 700 weight
         case large
+        /// 28 size / 36 line height / 700 weight
+        case extraLarge
     }
     static func heading(_ token: HeadingToken) -> FinancialConnectionsFont {
         let font: UIFont
@@ -40,11 +42,19 @@ struct FinancialConnectionsFont {
             font = UIFont.systemFont(ofSize: 24, weight: .bold)
             lineHeight = 32
             appleTextStyle = .title2
+        case .extraLarge:
+            font = UIFont.systemFont(ofSize: 28, weight: .bold)
+            lineHeight = 36
+            appleTextStyle = .title1
         }
         return .create(font: font, lineHeight: lineHeight, appleTextStyle: appleTextStyle)
     }
 
     enum BodyToken {
+        /// 12 size / 16 line height / 400 weight
+        case extraSmall
+        /// 12 size / 16 line height / 600 weight
+        case extraSmallEmphasized
         /// 14 size / 20 line height / 400 weight
         case small
         /// 14 size / 20 line height / 600 weight
@@ -59,6 +69,14 @@ struct FinancialConnectionsFont {
         let lineHeight: CGFloat
         let appleTextStyle: UIFont.TextStyle
         switch token {
+        case .extraSmall:
+            font = UIFont.systemFont(ofSize: 12, weight: .regular)
+            lineHeight = 16
+            appleTextStyle = .caption1
+        case .extraSmallEmphasized:
+            font = UIFont.systemFont(ofSize: 12, weight: .bold)
+            lineHeight = 16
+            appleTextStyle = .caption1
         case .small:
             font = UIFont.systemFont(ofSize: 14, weight: .regular)
             lineHeight = 20

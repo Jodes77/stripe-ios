@@ -39,8 +39,9 @@ import UIKit
         )
     }
 
-    private let theme: ElementsUITheme
+    private let theme: ElementsAppearance
 
+#if !canImport(CompositorServices)
     public var inputAccessoryView: UIView? {
         get {
             return textFieldView.textField.inputAccessoryView
@@ -50,6 +51,7 @@ import UIKit
             textFieldView.textField.inputAccessoryView = newValue
         }
     }
+#endif
 
     // MARK: - ViewModel
     public struct KeyboardProperties {
@@ -72,7 +74,8 @@ import UIKit
         let validationState: ValidationState
         let accessoryView: UIView?
         let shouldShowClearButton: Bool
-        let theme: ElementsUITheme
+        let isEditable: Bool
+        let theme: ElementsAppearance
     }
 
     var viewModel: ViewModel {
@@ -92,13 +95,14 @@ import UIKit
             validationState: configuration.validate(text: text, isOptional: configuration.isOptional),
             accessoryView: configuration.accessoryView(for: text, theme: theme),
             shouldShowClearButton: configuration.shouldShowClearButton,
+            isEditable: configuration.isEditable,
             theme: theme
         )
     }
 
     // MARK: - Initializer
 
-    public required init(configuration: TextFieldElementConfiguration, theme: ElementsUITheme = .default) {
+    public required init(configuration: TextFieldElementConfiguration, theme: ElementsAppearance = .default) {
         self.configuration = configuration
         self.theme = theme
     }
@@ -126,6 +130,7 @@ import UIKit
 // MARK: - Element
 
 extension TextFieldElement: Element {
+    public var collectsUserInput: Bool { true }
     public var view: UIView {
         return textFieldView
     }
@@ -175,5 +180,12 @@ extension TextFieldElement: TextFieldViewDelegate {
     func textFieldViewContinueToNextField(view: TextFieldView) {
         isEditing = view.isEditing
         delegate?.continueToNextField(element: self)
+    }
+}
+
+// MARK: - DebugDescription
+extension TextFieldElement {
+    public var debugDescription: String {
+        return "<TextFieldElement: \(Unmanaged.passUnretained(self).toOpaque())>; label = \(configuration.label); text = \(text); validationState = \(validationState)"
     }
 }

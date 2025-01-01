@@ -15,10 +15,12 @@ extension STPPaymentMethod {
     var paymentSheetLabel: String {
         switch type {
         case .card:
-            return "••••\(card?.last4 ?? "")"
+            return "•••• \(card?.last4 ?? "")"
         case .SEPADebit:
+            // The missing space is not an oversight, but on purpose
             return "••••\(sepaDebit?.last4 ?? "")"
         case .USBankAccount:
+            // The missing space is not an oversight, but on purpose
             return "••••\(usBankAccount?.last4 ?? "")"
         default:
             return type.displayName
@@ -31,7 +33,7 @@ extension STPPaymentMethod {
             guard let card = self.card else {
                 return nil
             }
-            let brand = STPCardBrandUtilities.stringFrom(card.brand) ?? ""
+            let brand = STPCardBrandUtilities.stringFrom(card.preferredDisplayBrand) ?? ""
             let last4 = card.last4 ?? ""
             let last4Spaced = last4.map { String($0) }.joined(separator: " ")
             let localized = String.Localized.card_brand_ending_in_last_4
@@ -44,6 +46,13 @@ extension STPPaymentMethod {
         default:
             return nil
         }
-
+    }
+    
+    func paymentOptionLabel(confirmParams: IntentConfirmParams?) -> String {
+        if let instantDebitsLinkedBank = confirmParams?.instantDebitsLinkedBank {
+            return "••••\(instantDebitsLinkedBank.last4 ?? "")"
+        } else {
+            return paymentSheetLabel
+        }
     }
 }

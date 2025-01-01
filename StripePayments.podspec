@@ -3,11 +3,12 @@ Pod::Spec.new do |s|
 
   # Do not update s.version directly.
   # Instead, update the VERSION file and run ./ci_scripts/update_version.sh
-  s.version                        = '23.14.0'
+  s.version                        = '24.2.0'
 
   s.summary                        = 'Bindings for the Stripe Payments API.'
   s.license                        = { type: 'MIT', file: 'LICENSE' }
   s.homepage                       = 'https://stripe.com/docs/mobile/ios'
+  s.readme                         = 'StripePayments/README.md'
   s.authors                        = { 'Stripe' => 'support+github@stripe.com' }
   s.source                         = { git: 'https://github.com/stripe/stripe-ios.git', tag: s.version.to_s }
   s.frameworks                     = 'Foundation', 'UIKit'
@@ -17,10 +18,10 @@ Pod::Spec.new do |s|
   s.swift_version = '5.0'
   s.weak_framework                 = 'SwiftUI'
   s.source_files                   = 'StripePayments/StripePayments/Source/**/*.swift'
-  s.ios.resource_bundle            = { 'StripePayments' => 'StripePayments/StripePayments/Resources/**/*.{lproj}' }
+  s.ios.resource_bundle            = { 'StripePaymentsBundle' => 'StripePayments/StripePayments/Resources/**/*.{lproj}' }
   s.dependency                       'StripeCore', s.version.to_s
   s.subspec 'Stripe3DS2' do |sp|
     sp.source_files = 'Stripe3DS2/Stripe3DS2/**/*.{h,m}'
-    sp.resource_bundles = { 'Stripe3DS2' => ['Stripe3DS2/Stripe3DS2/Resources/**/*.{lproj,png}'] }
+    sp.resource_bundles = { 'Stripe3DS2' => ['Stripe3DS2/Stripe3DS2/Resources/**/*.{lproj,png,xcassets}', 'Stripe3DS2/Stripe3DS2/PrivacyInfo.xcprivacy'] }
   end
 end

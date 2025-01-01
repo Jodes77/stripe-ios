@@ -12,16 +12,22 @@
 #import "STDSUICustomization.h"
 #import "UIViewController+Stripe3DS2.h"
 #import "STDSProcessingView.h"
+#import "STDSVisionSupport.h"
+#import "include/STDSAnalyticsDelegate.h"
 
 @interface STDSProgressViewController()
 @property (nonatomic, strong, nullable) STDSUICustomization *uiCustomization;
 @property (nonatomic, strong) void (^didCancel)(void);
 @property (nonatomic) STDSDirectoryServer directoryServer;
+@property (nonatomic, weak) id<STDSAnalyticsDelegate> analyticsDelegate;
 @end
 
 @implementation STDSProgressViewController
 
-- (instancetype)initWithDirectoryServer:(STDSDirectoryServer)directoryServer uiCustomization:(STDSUICustomization * _Nullable)uiCustomization didCancel:(void (^)(void))didCancel {
+- (instancetype)initWithDirectoryServer:(STDSDirectoryServer)directoryServer 
+                        uiCustomization:(STDSUICustomization * _Nullable)uiCustomization
+                      analyticsDelegate:(id<STDSAnalyticsDelegate>)analyticsDelegate
+                              didCancel:(void (^)(void))didCancel {
     self = [super initWithNibName:nil bundle:nil];
     
     if (self) {
@@ -39,9 +45,11 @@
     self.view = [[STDSProcessingView alloc] initWithCustomization:self.uiCustomization directoryServerLogo:dsImage];
 }
 
+#if !STP_TARGET_VISION
 - (UIStatusBarStyle)preferredStatusBarStyle {
     return self.uiCustomization.preferredStatusBarStyle;
 }
+#endif
 
 - (void)viewDidLoad {
     [super viewDidLoad];

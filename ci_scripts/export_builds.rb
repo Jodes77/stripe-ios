@@ -1,7 +1,6 @@
 #!/usr/bin/env ruby
 
 require 'fileutils'
-require 'zip'
 require 'yaml'
 
 # MARK: - Helpers
@@ -50,19 +49,18 @@ Dir.chdir(root_dir) do
 
   # Build for iOS
   puts `xcodebuild clean archive \
-    -quiet \
-    -workspace "Stripe.xcworkspace" \
-    -scheme "AllStripeFrameworks" \
-    -configuration "Release" \
-    -archivePath "#{build_dir}/StripeFrameworks-iOS.xcarchive" \
-    -sdk iphoneos \
-    -destination 'generic/platform=iOS' \
-    SYMROOT="#{build_dir}/StripeFrameworks-framework-ios" \
-    OBJROOT="#{build_dir}/StripeFrameworks-framework-ios" \
-    SUPPORTS_MACCATALYST=NO \
-    BUILD_LIBRARIES_FOR_DISTRIBUTION=YES \
-    SWIFT_ACTIVE_COMPILATION_CONDITIONS=STRIPE_BUILD_PACKAGE \
-    SKIP_INSTALL=NO`
+      -quiet \
+      -workspace "Stripe.xcworkspace" \
+      -scheme "AllStripeFrameworks" \
+      -configuration "Release" \
+      -archivePath "#{build_dir}/StripeFrameworks-iOS.xcarchive" \
+      -derivedDataPath "#{build_dir}/DerivedData" \
+      -sdk iphoneos \
+      -destination 'generic/platform=iOS' \
+      SUPPORTS_MACCATALYST=NO \
+      BUILD_LIBRARIES_FOR_DISTRIBUTION=YES \
+      SWIFT_ACTIVE_COMPILATION_CONDITIONS=STRIPE_BUILD_PACKAGE \
+      SKIP_INSTALL=NO`
 
   exit_code = $?.exitstatus
   die "xcodebuild exited with non-zero status code: #{exit_code}" if exit_code != 0
@@ -77,9 +75,8 @@ Dir.chdir(root_dir) do
     -destination 'generic/platform=iOS Simulator' \
     -configuration "Release" \
     -archivePath "#{build_dir}/StripeFrameworks-sim.xcarchive" \
+    -derivedDataPath "#{build_dir}/DerivedData" \
     -sdk iphonesimulator \
-    SYMROOT="#{build_dir}/StripeFrameworks-framework-sim" \
-    OBJROOT="#{build_dir}/StripeFrameworks-framework-sim" \
     SUPPORTS_MACCATALYST=NO \
     BUILD_LIBRARIES_FOR_DISTRIBUTION=YES \
     SWIFT_ACTIVE_COMPILATION_CONDITIONS=STRIPE_BUILD_PACKAGE \
@@ -97,10 +94,9 @@ Dir.chdir(root_dir) do
       -scheme "AllStripeFrameworksCatalyst" \
       -configuration "Release" \
       -archivePath "#{build_dir}/StripeFrameworks-mac.xcarchive" \
+      -derivedDataPath "#{build_dir}/DerivedData" \
       -sdk macosx \
       -destination 'generic/platform=macOS,variant=Mac Catalyst' \
-      SYMROOT="#{build_dir}/StripeFrameworks-framework-mac" \
-      OBJROOT="#{build_dir}/StripeFrameworks-framework-mac" \
       SUPPORTS_MACCATALYST=YES \
       BUILD_LIBRARIES_FOR_DISTRIBUTION=YES \
       SWIFT_ACTIVE_COMPILATION_CONDITIONS=STRIPE_BUILD_PACKAGE \
@@ -131,13 +127,6 @@ Dir.chdir(root_dir) do
   end # modules.each
 end # Dir.chdir
 
-Zip::File.open(File.join_if_safe(build_dir, 'Stripe.xcframework.zip'), create: true) do |zipfile|
-  # Add module framework directories to zip
-  modules.each do |m|
-    framework_name = m['framework_name']
-    Dir.glob("#{build_dir}/#{framework_name}.xcframework/**/*").each do |file|
-      file_name = Pathname.new(file).relative_path_from(Pathname.new(build_dir))
-      zipfile.add(file_name, file)
-    end
-  end
+Dir.chdir(build_dir) do
+  `zip -r Stripe.xcframework.zip *.xcframework`
 end

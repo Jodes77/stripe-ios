@@ -145,7 +145,7 @@ final class DocumentUploader: DocumentUploaderProtocol {
     /// - Parameters:
     ///   - side: The side of the image (front or back) to upload.
     ///   - originalImage: The original image captured or uploaded by the user.
-    ///   - idDetectorOutput: The output from the IDDetector model
+    ///   - documentScannerOutput: The output from the DocumentScanner.
     ///   - method: The method the image was obtained.
     func uploadImages(
         for side: DocumentSide,

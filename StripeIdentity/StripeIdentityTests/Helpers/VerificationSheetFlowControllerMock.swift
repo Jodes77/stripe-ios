@@ -14,9 +14,13 @@ import XCTest
 
 /// Mock to help us test behavior that relies on  VerificationSheetFlowController
 final class VerificationSheetFlowControllerMock: VerificationSheetFlowControllerProtocol {
+    var documentUploader: StripeIdentity.DocumentUploaderProtocol?
+
     var uncollectedFields: Set<StripeAPI.VerificationPageFieldType>
     var isFinishedCollecting = false
     var analyticsLastScreen: IdentityFlowViewController?
+
+    var visitedIndividualWelcomePage = false
 
     weak var delegate: VerificationSheetFlowControllerDelegate?
 
@@ -70,6 +74,21 @@ final class VerificationSheetFlowControllerMock: VerificationSheetFlowController
     func transitionToSelfieCaptureScreen(
         staticContentResult: Result<StripeCore.StripeAPI.VerificationPage, Error>,
         sheetController: StripeIdentity.VerificationSheetControllerProtocol
+    ) {
+        // no-op
+    }
+
+    func transitionToDocumentCaptureScreen(
+        staticContentResult: Result<StripeCore.StripeAPI.VerificationPage, Error>,
+        sheetController: StripeIdentity.VerificationSheetControllerProtocol
+    ) {
+        // no-op
+    }
+
+    func transitionToErrorScreen(
+        sheetController: StripeIdentity.VerificationSheetControllerProtocol,
+        error: Error,
+        completion: @escaping () -> Void
     ) {
         // no-op
     }

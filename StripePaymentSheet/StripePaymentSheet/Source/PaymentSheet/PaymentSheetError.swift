@@ -14,7 +14,7 @@ import StripePayments
 ///
 /// Most errors do not originate from PaymentSheet itself; instead, they come from the Stripe API
 /// or other SDK components like STPPaymentHandler, PassKit (Apple Pay), etc.
-public enum PaymentSheetError: Error {
+public enum PaymentSheetError: Error, LocalizedError {
 
     /// An unknown error.
     case unknown(debugDescription: String)
@@ -39,6 +39,7 @@ public enum PaymentSheetError: Error {
     case fetchPaymentMethodsFailure
 
     // MARK: Deferred intent errors
+    case intentConfigurationValidationFailed(message: String)
     case deferredIntentValidationFailed(message: String)
 
     // MARK: - Link errors
@@ -53,77 +54,16 @@ public enum PaymentSheetError: Error {
     case failedToCreateLinkSession
     case linkNotAuthorized
 
-    /// Localized description of the error
-    public var localizedDescription: String {
+    // MARK: - Confirmation errors
+    case unexpectedNewPaymentMethod
+    case embeddedPaymentElementAlreadyConfirmedIntent
+
+    public var errorDescription: String? {
         return NSError.stp_unexpectedErrorMessage()
     }
 }
 
 extension PaymentSheetError: CustomDebugStringConvertible {
-    /// Returns true if the error is un-fixable; e.g. no amount of retrying or customer action will result in something different
-    static func isUnrecoverable(error: Error) -> Bool {
-        // TODO: Expired ephemeral key
-        return false
-    }
-
-    /// A string that can safley be logged to our analytics service that does not contain any PII
-    public var safeLoggingString: String {
-        switch self {
-        case .unknown:
-            return "unknown"
-        case .missingClientSecret:
-            return "missingClientSecret"
-        case .invalidClientSecret:
-            return "invalidClientSecret"
-        case .unexpectedResponseFromStripeAPI:
-            return "unexpectedResponseFromStripeAPI"
-        case .applePayNotSupportedOrMisconfigured:
-            return "applePayNotSupportedOrMisconfigured"
-        case .alreadyPresented:
-            return "alreadyPresented"
-        case .flowControllerConfirmFailed:
-            return "flowControllerConfirmFailed"
-        case .errorHandlingNextAction:
-            return "errorHandlingNextAction"
-        case .unrecognizedHandlerStatus:
-            return "unrecognizedHandlerStatus"
-        case .accountLinkFailure:
-            return "accountLinkFailure"
-        case .setupIntentClientSecretProviderNil:
-            return "setupIntentClientSecretProviderNil"
-        case .noPaymentMethodTypesAvailable:
-            return "noPaymentMethodTypesAvailable"
-        case .paymentIntentInTerminalState:
-            return "paymentIntentInTerminalState"
-        case .setupIntentInTerminalState:
-            return "setupIntentInTerminalState"
-        case .fetchPaymentMethodsFailure:
-            return "fetchPaymentMethodsFailure"
-        case .deferredIntentValidationFailed:
-            return "deferredIntentValidationFailed"
-        case .linkSignUpNotRequired:
-            return "linkSignUpNotRequired"
-        case .linkCallVerifyNotRequired:
-            return "linkCallVerifyNotRequired"
-        case .linkingWithoutValidSession:
-            return "linkingWithoutValidSession"
-        case .savingWithoutValidLinkSession:
-            return "savingWithoutValidLinkSession"
-        case .payingWithoutValidLinkSession:
-            return "payingWithoutValidLinkSession"
-        case .deletingWithoutValidLinkSession:
-            return "deletingWithoutValidLinkSession"
-        case .updatingWithoutValidLinkSession:
-            return "updatingWithoutValidLinkSession"
-        case .linkLookupNotFound:
-            return "linkLookupNotFound"
-        case .failedToCreateLinkSession:
-            return "failedToCreateLinkSession"
-        case .linkNotAuthorized:
-            return "linkNotAuthorized"
-        }
-    }
-
     /// A description logged to a developer for debugging
     public var debugDescription: String {
         let errorMessageSuffix = {
@@ -164,7 +104,7 @@ extension PaymentSheetError: CustomDebugStringConvertible {
             case .linkSignUpNotRequired:
                 return "Don't call sign up if not needed"
             case .noPaymentMethodTypesAvailable(intentPaymentMethods: let intentPaymentMethods):
-                return "None of the payment methods on the PaymentIntent/SetupIntent can be used in PaymentSheet: \(intentPaymentMethods). You may need to set `allowsDelayedPaymentMethods` or `allowsPaymentMethodsRequiringShippingAddress` in your PaymentSheet.Configuration object."
+                return "None of the payment methods on the PaymentIntent/SetupIntent can be used in PaymentSheet: \(intentPaymentMethods). You may need to set `allowsDelayedPaymentMethods` or `allowsPaymentMethodsRequiringShippingAddress` or set `returnURL` in your PaymentSheet.Configuration object."
             case .linkCallVerifyNotRequired:
                 return "Don't call verify if not needed"
             case .linkingWithoutValidSession:
@@ -183,6 +123,12 @@ extension PaymentSheetError: CustomDebugStringConvertible {
                 return "confirm called without authorizing Link"
             case .setupIntentClientSecretProviderNil:
                 return "setupIntentClientSecretForCustomerAttach, but setupIntentClientSecretProvider is nil"
+            case .unexpectedNewPaymentMethod:
+                return "New payment method should not have been created yet"
+            case .intentConfigurationValidationFailed(message: let message):
+                return message
+            case .embeddedPaymentElementAlreadyConfirmedIntent:
+                return "This instance of EmbeddedPaymentElement has already confirmed an intent successfully. Create a new instance of EmbeddedPaymentElement to confirm a new intent."
             }
         }()
 

@@ -20,38 +20,26 @@ protocol LinkAccountPickerBodyViewDelegate: AnyObject {
 
 final class LinkAccountPickerBodyView: UIView {
 
-    private let accountTuples: [FinancialConnectionsAccountTuple]
-    private let addNewAccount: FinancialConnectionsNetworkingAccountPicker.AddNewAccount
     weak var delegate: LinkAccountPickerBodyViewDelegate?
-
-    private lazy var verticalStackView: UIStackView = {
-        let verticalStackView = UIStackView()
-        verticalStackView.axis = .vertical
-        verticalStackView.spacing = 12
-        return verticalStackView
-    }()
+    private var partnerAccountIdToRowView: [String: AccountPickerRowView] = [:]
 
     init(
         accountTuples: [FinancialConnectionsAccountTuple],
-        addNewAccount: FinancialConnectionsNetworkingAccountPicker.AddNewAccount
+        addNewAccount: FinancialConnectionsNetworkingAccountPicker.AddNewAccount,
+        theme: FinancialConnectionsTheme
     ) {
-        self.accountTuples = accountTuples
-        self.addNewAccount = addNewAccount
         super.init(frame: .zero)
-        addAndPinSubview(verticalStackView)
-    }
 
-    required init?(coder: NSCoder) {
-        fatalError("init(coder:) has not been implemented")
-    }
+        let verticalStackView = UIStackView()
+        verticalStackView.axis = .vertical
+        verticalStackView.spacing = 16
 
-    func selectAccount(_ selectedAccountTuple: FinancialConnectionsAccountTuple?) {
-        // clear all previous state
-        verticalStackView.arrangedSubviews.forEach { $0.removeFromSuperview() }
-
+        // add account rows
         accountTuples.forEach { accountTuple in
-            let accountRowView = LinkAccountPickerRowView(
-                isDisabled: !accountTuple.accountPickerAccount.allowSelection,
+            let accountRowView = AccountPickerRowView(
+                isDisabled: !accountTuple.accountPickerAccount.allowSelection && accountTuple.accountPickerAccount.drawerOnSelection == nil,
+                isFaded: !accountTuple.accountPickerAccount.allowSelection,
+                theme: theme,
                 didSelect: { [weak self] in
                     guard let self = self else { return }
                     self.delegate?.linkAccountPickerBodyView(
@@ -60,26 +48,25 @@ final class LinkAccountPickerBodyView: UIView {
                     )
                 }
             )
-            let rowTitles = AccountPickerHelpers.rowTitles(
-                forAccount: accountTuple.partnerAccount,
-                captionWillHideAccountNumbers: accountTuple.accountPickerAccount.caption != nil
+            let rowTitles = AccountPickerHelpers.rowInfo(
+                forAccount: accountTuple.partnerAccount
             )
-            accountRowView.configure(
-                institutionImageUrl: accountTuple.partnerAccount.institution?.icon?.default,
-                leadingTitle: rowTitles.leadingTitle,
-                trailingTitle: rowTitles.trailingTitle,
+            accountRowView.set(
+                institutionIconUrl: (accountTuple.accountPickerAccount.accountIcon?.default ?? accountTuple.partnerAccount.institution?.icon?.default ?? accountTuple.accountPickerAccount.icon?.default),
+                title: rowTitles.accountName,
                 subtitle: {
                     if let caption = accountTuple.accountPickerAccount.caption {
                         return caption
                     } else {
-                        return AccountPickerHelpers.rowSubtitle(
-                            forAccount: accountTuple.partnerAccount
-                        )
+                        return rowTitles.accountNumbers
                     }
                 }(),
-                trailingIconImageUrl: accountTuple.accountPickerAccount.icon?.default,
-                isSelected: selectedAccountTuple?.partnerAccount.id == accountTuple.partnerAccount.id
+                underlineSubtitle: accountTuple.accountPickerAccount.drawerOnSelection != nil,
+                balanceString:
+                    (accountTuple.accountPickerAccount.caption == nil) ? rowTitles.balanceString : nil,
+                isSelected: false // initially nothing is selected
             )
+            partnerAccountIdToRowView[accountTuple.partnerAccount.id] = accountRowView
             verticalStackView.addArrangedSubview(accountRowView)
         }
 
@@ -87,12 +74,30 @@ final class LinkAccountPickerBodyView: UIView {
         let newAccountRowView = LinkAccountPickerNewAccountRowView(
             title: addNewAccount.body,
             imageUrl: addNewAccount.icon?.default,
+            theme: theme,
             didSelect: { [weak self] in
                 guard let self = self else { return }
                 self.delegate?.linkAccountPickerBodyViewSelectedNewBankAccount(self)
             }
         )
+        newAccountRowView.accessibilityIdentifier = "add_bank_account"
         verticalStackView.addArrangedSubview(newAccountRowView)
+
+        addAndPinSubview(verticalStackView)
+    }
+
+    required init?(coder: NSCoder) {
+        fatalError("init(coder:) has not been implemented")
+    }
+
+    func selectAccounts(_ selectedAccounts: [FinancialConnectionsAccountTuple]) {
+        let selectedAccountIds = Set(selectedAccounts.map({ $0.partnerAccount.id }))
+        partnerAccountIdToRowView
+            .forEach { (partnerAccountId: String, rowView: AccountPickerRowView) in
+                rowView.set(
+                    isSelected: selectedAccountIds.contains(partnerAccountId)
+                )
+            }
     }
 }
 
@@ -112,7 +117,10 @@ private struct LinkAccountPickerBodyViewUIViewRepresentable: UIViewRepresentable
                         caption: nil,
                         selectionCta: nil,
                         icon: nil,
-                        selectionCtaIcon: nil
+                        selectionCtaIcon: nil,
+                        drawerOnSelection: nil,
+                        accountIcon: nil,
+                        dataAccessNotice: nil
                     ),
                     partnerAccount: FinancialConnectionsPartnerAccount(
                         id: "abc",
@@ -146,7 +154,10 @@ private struct LinkAccountPickerBodyViewUIViewRepresentable: UIViewRepresentable
                         icon: FinancialConnectionsImage(
                             default: "https://b.stripecdn.com/connections-statics-srv/assets/SailIcon--warning-orange-3x.png"
                         ),
-                        selectionCtaIcon: nil
+                        selectionCtaIcon: nil,
+                        drawerOnSelection: nil,
+                        accountIcon: nil,
+                        dataAccessNotice: nil
                     ),
                     partnerAccount: FinancialConnectionsPartnerAccount(
                         id: "abc",
@@ -170,7 +181,10 @@ private struct LinkAccountPickerBodyViewUIViewRepresentable: UIViewRepresentable
                         caption: nil,
                         selectionCta: nil,
                         icon: nil,
-                        selectionCtaIcon: nil
+                        selectionCtaIcon: nil,
+                        drawerOnSelection: nil,
+                        accountIcon: nil,
+                        dataAccessNotice: nil
                     ),
                     partnerAccount: FinancialConnectionsPartnerAccount(
                         id: "abc",
@@ -193,12 +207,13 @@ private struct LinkAccountPickerBodyViewUIViewRepresentable: UIViewRepresentable
                 icon: FinancialConnectionsImage(
                     default: "https://b.stripecdn.com/connections-statics-srv/assets/SailIcon--add-purple-3x.png"
                 )
-            )
+            ),
+            theme: .light
         )
     }
 
     func updateUIView(_ uiView: LinkAccountPickerBodyView, context: Context) {
-        uiView.selectAccount(nil)
+        uiView.selectAccounts([])
     }
 }
 

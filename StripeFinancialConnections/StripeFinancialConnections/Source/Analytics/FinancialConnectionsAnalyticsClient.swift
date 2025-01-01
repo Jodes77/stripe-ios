@@ -9,13 +9,21 @@ import Foundation
 @_spi(STP) import StripeCore
 import UIKit
 
+protocol FinancialConnectionsAnalyticsClientDelegate: AnyObject {
+    func analyticsClient(
+        _ analyticsClient: FinancialConnectionsAnalyticsClient,
+        didReceiveEvent event: FinancialConnectionsEvent
+    )
+}
+
 final class FinancialConnectionsAnalyticsClient {
 
-    private let analyticsClient: AnalyticsClientV2
+    private let analyticsClient: AnalyticsClientV2Protocol
     private var additionalParameters: [String: Any] = [:]
+    weak var delegate: FinancialConnectionsAnalyticsClientDelegate?
 
     init(
-        analyticsClient: AnalyticsClientV2 = AnalyticsClientV2(
+        analyticsClient: AnalyticsClientV2Protocol = AnalyticsClientV2(
             clientId: "mobile-clients-linked-accounts",
             origin: "stripe-linked-accounts-ios"
         )
@@ -110,6 +118,13 @@ extension FinancialConnectionsAnalyticsClient {
         eventName: String,
         pane: FinancialConnectionsSessionManifest.NextPane
     ) {
+        FeedbackGeneratorAdapter.errorOccurred()
+        FinancialConnectionsEvent
+            .events(fromError: error)
+            .forEach { event in
+                delegate?.analyticsClient(self, didReceiveEvent: event)
+            }
+
         var parameters: [String: Any] = [:]
         parameters["error"] = errorName
         if let stripeError = error as? StripeError,
@@ -161,7 +176,7 @@ extension FinancialConnectionsAnalyticsClient {
         additionalParameters["account_holder_id"] = manifest.accountholderToken
     }
 
-        static func paneFromViewController(
+    static func paneFromViewController(
         _ viewController: UIViewController?
     ) -> FinancialConnectionsSessionManifest.NextPane {
         switch viewController {
@@ -179,8 +194,6 @@ extension FinancialConnectionsAnalyticsClient {
             return .success
         case is ManualEntryViewController:
             return .manualEntry
-        case is ManualEntrySuccessViewController:
-            return .manualEntrySuccess
         case is ResetFlowViewController:
             return .resetFlow
         case is TerminalErrorViewController:
@@ -197,6 +210,10 @@ extension FinancialConnectionsAnalyticsClient {
             return .networkingSaveToLinkVerification
         case is LinkAccountPickerViewController:
             return .linkAccountPicker
+        case is LinkLoginViewController:
+            return .linkLogin
+        case is ErrorViewController:
+            return .unexpectedError
         default:
             return .unparsable
         }

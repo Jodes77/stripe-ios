@@ -11,6 +11,7 @@ import XCTest
 @testable@_spi(STP) import Stripe
 @testable@_spi(STP) import StripeApplePay
 @testable@_spi(STP) import StripeCore
+@testable@_spi(STP) import StripePayments
 @testable@_spi(STP) import StripePaymentSheet
 @testable@_spi(STP) import StripePaymentsUI
 
@@ -89,35 +90,19 @@ class STPAPIClientTest: XCTestCase {
         XCTAssertEqual(accountHeader, "acct_123")
     }
 
-    func testInitWithConfiguration() {
-        let config = STPPaymentConfiguration()
-        // #pragma clang diagnostic push
-        // #pragma clang diagnostic ignored "-Wdeprecated"
-        config.publishableKey = "pk_123"
-        config.stripeAccount = "acct_123"
-
-        let sut = STPAPIClient(configuration: config)
-        XCTAssertEqual(sut.publishableKey, config.publishableKey)
-        XCTAssertEqual(sut.stripeAccount, config.stripeAccount)
-        // #pragma clang diagnostic pop
-
-        let accountHeader = sut.configuredRequest(
-            for: URL(string: "https://www.stripe.com")!,
-            additionalHeaders: [:]
-        ).allHTTPHeaderFields?["Stripe-Account"]
-        XCTAssertEqual(accountHeader, "acct_123")
-    }
-
     private struct MockUAUsageClass: STPAnalyticsProtocol {
         static let stp_analyticsIdentifier = "MockUAUsageClass"
     }
 
     func testPaymentUserAgent() {
+        STPAnalyticsClient.sharedClient.productUsage = .init()
         STPAnalyticsClient.sharedClient.addClass(toProductUsageIfNecessary: MockUAUsageClass.self)
         var params: [String: Any] = [:]
         params = STPAPIClient.paramsAddingPaymentUserAgent(params)
-        XCTAssert((params["payment_user_agent"] as! String).contains("MockUAUsageClass"))
-        XCTAssert((params["payment_user_agent"] as! String).starts(with: "stripe-ios/"))
+        XCTAssertEqual(params["payment_user_agent"] as! String, "stripe-ios/\(StripeAPIConfiguration.STPSDKVersion); variant.paymentsheet; MockUAUsageClass")
+
+        params = STPAPIClient.paramsAddingPaymentUserAgent(params, additionalValues: ["foo"])
+        XCTAssertEqual(params["payment_user_agent"] as! String, "stripe-ios/\(StripeAPIConfiguration.STPSDKVersion); variant.paymentsheet; MockUAUsageClass; foo")
     }
 
     func testSetAppInfo() {

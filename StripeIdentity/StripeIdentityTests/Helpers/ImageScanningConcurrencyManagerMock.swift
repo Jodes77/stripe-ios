@@ -11,6 +11,7 @@ import Foundation
 @_spi(STP) import StripeCameraCore
 @_spi(STP) import StripeCore
 
+import CoreMedia
 @testable import StripeIdentity
 
 final class ImageScanningConcurrencyManagerMock: ImageScanningConcurrencyManagerProtocol {
@@ -24,6 +25,7 @@ final class ImageScanningConcurrencyManagerMock: ImageScanningConcurrencyManager
     func scanImage<ScannerOutput>(
         with scanner: AnyImageScanner<ScannerOutput>,
         pixelBuffer: CVPixelBuffer,
+        sampleBuffer: CMSampleBuffer,
         cameraSession: CameraSessionProtocol,
         completeOn completionQueue: DispatchQueue,
         completion: @escaping (ScannerOutput) -> Void

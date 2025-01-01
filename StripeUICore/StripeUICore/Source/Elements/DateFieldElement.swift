@@ -65,7 +65,7 @@ import UIKit
     public var didUpdate: DidUpdateSelectedDate?
 
     private let label: String?
-    private let theme: ElementsUITheme
+    private let theme: ElementsAppearance
 
     /**
      - Parameters:
@@ -89,7 +89,7 @@ import UIKit
         maximumDate: Date? = nil,
         locale: Locale = .current,
         timeZone: TimeZone = .current,
-        theme: ElementsUITheme = .default,
+        theme: ElementsAppearance = .default,
         customDateFormatter: DateFormatter? = nil,
         didUpdate: DidUpdateSelectedDate? = nil
     ) {
@@ -122,13 +122,16 @@ import UIKit
     }
 
     private func updateDisplayText() {
-        pickerFieldView.displayText = selectedDate.map { dateFormatter.string(from: $0) }
+        let selectedDate = selectedDate.map { dateFormatter.string(from: $0) }
+        pickerFieldView.displayText = NSAttributedString(string: selectedDate ?? "")
     }
 }
 
 // MARK: Element
 
 extension DateFieldElement: Element {
+    public var collectsUserInput: Bool { true }
+
     public var view: UIView {
         return pickerFieldView
     }
@@ -145,7 +148,7 @@ extension DateFieldElement: PickerFieldViewDelegate {
         selectedDate = datePickerView.date
     }
 
-    func didFinish(_ pickerFieldView: PickerFieldView) {
+    func didFinish(_ pickerFieldView: PickerFieldView, shouldAutoAdvance: Bool) {
         if previouslySelectedDate != selectedDate,
             let selectedDate = selectedDate
         {
@@ -153,7 +156,13 @@ extension DateFieldElement: PickerFieldViewDelegate {
             previouslySelectedDate = selectedDate
             delegate?.didUpdate(element: self)
         }
-        delegate?.continueToNextField(element: self)
+        if shouldAutoAdvance {
+            delegate?.continueToNextField(element: self)
+        }
+    }
+
+    func didCancel(_ pickerFieldView: PickerFieldView) {
+        // no-op
     }
 }
 

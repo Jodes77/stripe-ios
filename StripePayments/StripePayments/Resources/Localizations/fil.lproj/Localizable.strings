@@ -1,4 +1,4 @@
-"AU BECS Direct Debit" = "AU BECS Direct Debit";
+"AU Direct Debit" = "AU Direct Debit";
 
 "Affirm" = "Affirm";
 
@@ -8,9 +8,9 @@
 
 "BLIK" = "BLIK";
 
-"Bancontact" = "Bancontact";
+"Bacs Direct Debit" = "Bacs Direct Debit";
 
-"Bank" = "Bangko";
+"Bancontact" = "Bancontact";
 
 "Boleto" = "Boleto";
 
@@ -28,6 +28,8 @@
 
 "Klarna" = "Klarna";
 
+"Konbini" = "Konbini";
+
 "Link" = "Link";
 
 "NetBanking" = "NetBanking";
@@ -42,11 +44,13 @@
 
 "Sofort" = "Sofort";
 
+"Swish" = "Swish";
+
 "Timed out authenticating your payment method -- try again" = "Nag- time out sa pagpapatunay ng iyong paraan ng pagbabayad --- subukin muli";
 
 "UPI" = "UPI";
 
-"US Bank Account" = "Account sa Bangko sa US";
+"US bank account" = "Account sa bangko sa US";
 
 "Unknown" = "Di kilala";
 

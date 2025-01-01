@@ -15,6 +15,7 @@ class NetworkingLinkSignupFooterView: HitTestView {
     private let aboveCtaText: String
     private let saveToLinkButtonText: String
     private let notNowButtonText: String
+    private let theme: FinancialConnectionsTheme
     private let didSelectSaveToLink: () -> Void
     private let didSelectNotNow: () -> Void
     private let didSelectURL: (URL) -> Void
@@ -22,7 +23,14 @@ class NetworkingLinkSignupFooterView: HitTestView {
     private lazy var footerVerticalStackView: UIStackView = {
         let verticalStackView = UIStackView()
         verticalStackView.axis = .vertical
-        verticalStackView.spacing = 24
+        verticalStackView.spacing = 16
+        verticalStackView.isLayoutMarginsRelativeArrangement = true
+        verticalStackView.directionalLayoutMargins = NSDirectionalEdgeInsets(
+            top: 16,
+            leading: 24,
+            bottom: 16,
+            trailing: 24
+        )
         verticalStackView.addArrangedSubview(aboveCtaLabel)
         verticalStackView.addArrangedSubview(buttonVerticalStack)
         return verticalStackView
@@ -30,11 +38,11 @@ class NetworkingLinkSignupFooterView: HitTestView {
 
     private lazy var aboveCtaLabel: AttributedTextView = {
         let termsAndPrivacyPolicyLabel = AttributedTextView(
-            font: .body(.small),
-            boldFont: .body(.smallEmphasized),
-            linkFont: .body(.smallEmphasized),
-            textColor: .textSecondary,
-            alignCenter: true
+            font: .label(.small),
+            boldFont: .label(.smallEmphasized),
+            linkFont: .label(.small),
+            textColor: .textDefault,
+            alignment: .center
         )
         termsAndPrivacyPolicyLabel.setText(
             aboveCtaText,
@@ -46,14 +54,16 @@ class NetworkingLinkSignupFooterView: HitTestView {
     private lazy var buttonVerticalStack: UIStackView = {
         let verticalStackView = UIStackView()
         verticalStackView.axis = .vertical
-        verticalStackView.spacing = 12
+        verticalStackView.spacing = 8
+        verticalStackView.addArrangedSubview(saveToLinkButton)
         verticalStackView.addArrangedSubview(notNowButton)
         return verticalStackView
     }()
 
     private lazy var saveToLinkButton: StripeUICore.Button = {
-        let saveToLinkButton = Button(configuration: .financialConnectionsPrimary)
+        let saveToLinkButton = Button.primary(theme: theme)
         saveToLinkButton.title = saveToLinkButtonText
+        saveToLinkButton.accessibilityIdentifier = "networking_link_signup_footer_view.save_to_link_button"
         saveToLinkButton.addTarget(self, action: #selector(didSelectSaveToLinkButton), for: .touchUpInside)
         saveToLinkButton.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
@@ -63,7 +73,7 @@ class NetworkingLinkSignupFooterView: HitTestView {
     }()
 
     private lazy var notNowButton: StripeUICore.Button = {
-        let saveToLinkButton = Button(configuration: .financialConnectionsSecondary)
+        let saveToLinkButton = Button.secondary()
         saveToLinkButton.title = notNowButtonText
         saveToLinkButton.addTarget(self, action: #selector(didSelectNotNowButton), for: .touchUpInside)
         saveToLinkButton.translatesAutoresizingMaskIntoConstraints = false
@@ -77,6 +87,7 @@ class NetworkingLinkSignupFooterView: HitTestView {
         aboveCtaText: String,
         saveToLinkButtonText: String,
         notNowButtonText: String,
+        theme: FinancialConnectionsTheme,
         didSelectSaveToLink: @escaping () -> Void,
         didSelectNotNow: @escaping () -> Void,
         didSelectURL: @escaping (URL) -> Void
@@ -84,6 +95,7 @@ class NetworkingLinkSignupFooterView: HitTestView {
         self.aboveCtaText = aboveCtaText
         self.saveToLinkButtonText = saveToLinkButtonText
         self.notNowButtonText = notNowButtonText
+        self.theme = theme
         self.didSelectSaveToLink = didSelectSaveToLink
         self.didSelectNotNow = didSelectNotNow
         self.didSelectURL = didSelectURL
@@ -94,15 +106,6 @@ class NetworkingLinkSignupFooterView: HitTestView {
 
     required init?(coder: NSCoder) {
         fatalError("init(coder:) has not been implemented")
-    }
-
-    func showSaveToLinkButtonIfNeeded() {
-        guard saveToLinkButton.superview == nil else {
-            return  // already added
-        }
-        notNowButton.removeFromSuperview()
-        buttonVerticalStack.addArrangedSubview(saveToLinkButton)
-        buttonVerticalStack.addArrangedSubview(notNowButton)
     }
 
     func enableSaveToLinkButton(_ enable: Bool) {
@@ -133,6 +136,7 @@ private struct NetworkingLinkSignupFooterViewUIViewRepresentable: UIViewRepresen
             aboveCtaText: "By saving your account to Link, you agree to Link’s [Terms](https://link.co/terms) and [Privacy Policy](https://link.co/privacy)",
             saveToLinkButtonText: "Save to Link",
             notNowButtonText: "Not now",
+            theme: .light,
             didSelectSaveToLink: {},
             didSelectNotNow: {},
             didSelectURL: { _ in }

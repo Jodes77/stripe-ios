@@ -17,47 +17,73 @@ protocol NetworkingOTPViewDelegate: AnyObject {
 
     func networkingOTPViewWillStartVerification(_ view: NetworkingOTPView)
     func networkingOTPView(_ view: NetworkingOTPView, didStartVerification consumerSession: ConsumerSessionData)
+    func networkingOTPView(_ view: NetworkingOTPView, didGetConsumerPublishableKey consumerPublishableKey: String)
     func networkingOTPView(_ view: NetworkingOTPView, didFailToStartVerification error: Error)
 
+    func networkingOTPViewWillConfirmVerification(_ view: NetworkingOTPView)
     func networkingOTPViewDidConfirmVerification(_ view: NetworkingOTPView)
-    func networkingOTPView(_ view: NetworkingOTPView, didTerminallyFailToConfirmVerification error: Error)
+    func networkingOTPView(
+        _ view: NetworkingOTPView,
+        didFailToConfirmVerification error: Error,
+        isTerminal: Bool
+    )
 }
 
 final class NetworkingOTPView: UIView {
+
+    enum TestModeValues {
+        static let otp = "000000"
+    }
 
     private let dataSource: NetworkingOTPDataSource
     weak var delegate: NetworkingOTPViewDelegate?
 
     private lazy var verticalStackView: UIStackView = {
-        let otpVerticalStackView = UIStackView(
-            arrangedSubviews: [
-                otpTextField,
-            ]
-        )
+        let otpVerticalStackView = UIStackView()
+
+        if dataSource.isTestMode {
+            let testModeBanner = TestModeAutofillBannerView(
+                context: .otp,
+                theme: dataSource.theme,
+                didTapAutofill: applyTestModeValue
+            )
+            otpVerticalStackView.addArrangedSubview(testModeBanner)
+        }
+
+        otpVerticalStackView.addArrangedSubview(otpTextField)
+
         otpVerticalStackView.axis = .vertical
-        otpVerticalStackView.spacing = 8
+        otpVerticalStackView.spacing = 16
         return otpVerticalStackView
     }()
-    // TODO(kgaidis): make changes to `OneTimeCodeTextField` to
-    // make the font larger
     private(set) lazy var otpTextField: OneTimeCodeTextField = {
-        let otpTextField = OneTimeCodeTextField(numberOfDigits: 6, theme: theme)
-        otpTextField.tintColor = .textBrand
+        let otpTextField = OneTimeCodeTextField(
+            configuration: OneTimeCodeTextField.Configuration(
+                itemSpacing: 8,
+                enableDigitGrouping: false,
+                font: UIFont.systemFont(ofSize: 28, weight: .regular),
+                itemCornerRadius: 12,
+                itemHeight: 58
+            ),
+            theme: theme
+        )
+        otpTextField.tintColor = dataSource.theme.primaryColor
         otpTextField.addTarget(self, action: #selector(otpTextFieldDidChange), for: .valueChanged)
         return otpTextField
     }()
-    private lazy var theme: ElementsUITheme = {
-        var theme: ElementsUITheme = .default
+    private lazy var theme: ElementsAppearance = {
+        var theme: ElementsAppearance = .default
         theme.colors = {
-            var colors = ElementsUITheme.Color()
-            colors.border = .borderNeutral
-            colors.background = .customBackgroundColor
-            colors.textFieldText = .textPrimary
+            var colors = ElementsAppearance.Color()
+            colors.border = .borderDefault
+            colors.componentBackground = .customBackgroundColor
+            colors.textFieldText = .textDefault
+            colors.danger = .textFeedbackCritical
             return colors
         }()
         return theme
     }()
-    private var lastErrorView: UIView?
+    private var lastFooterView: UIView?
 
     init(dataSource: NetworkingOTPDataSource) {
         self.dataSource = dataSource
@@ -77,14 +103,54 @@ final class NetworkingOTPView: UIView {
         }
     }
 
+    func showLoadingView(_ show: Bool) {
+        lastFooterView?.removeFromSuperview()
+        lastFooterView = nil
+
+        if show {
+            let activityIndicator = ActivityIndicator(size: .medium)
+            activityIndicator.color = dataSource.theme.primaryColor
+            activityIndicator.startAnimating()
+            let loadingView = UIStackView(
+                arrangedSubviews: [activityIndicator]
+            )
+            loadingView.isLayoutMarginsRelativeArrangement = true
+            loadingView.directionalLayoutMargins = NSDirectionalEdgeInsets(
+                top: 8,
+                leading: 0,
+                bottom: 8,
+                trailing: 0
+            )
+            self.lastFooterView = loadingView
+            verticalStackView.addArrangedSubview(loadingView)
+        }
+    }
+
     private func showErrorText(_ errorText: String?) {
-        lastErrorView?.removeFromSuperview()
-        lastErrorView = nil
+        lastFooterView?.removeFromSuperview()
+        lastFooterView = nil
 
         if let errorText = errorText {
-            // TODO(kgaidis): rename & move `ManualEntryErrorView` to be more generic
-            let errorView = ManualEntryErrorView(text: errorText)
-            self.lastErrorView = errorView
+            let errorLabel = AttributedTextView(
+                font: .label(.medium),
+                boldFont: .label(.mediumEmphasized),
+                linkFont: .label(.medium),
+                textColor: .textFeedbackCritical,
+                linkColor: .textFeedbackCritical,
+                alignment: .center
+            )
+            errorLabel.setText(errorText)
+            let errorView = UIStackView(
+                arrangedSubviews: [errorLabel]
+            )
+            errorView.isLayoutMarginsRelativeArrangement = true
+            errorView.directionalLayoutMargins = NSDirectionalEdgeInsets(
+                top: 8,
+                leading: 0,
+                bottom: 0,
+                trailing: 0
+            )
+            self.lastFooterView = errorView
             verticalStackView.addArrangedSubview(errorView)
         }
     }
@@ -97,6 +163,9 @@ final class NetworkingOTPView: UIView {
                 switch result {
                 case .success(let lookupConsumerSessionResponse):
                     if lookupConsumerSessionResponse.exists {
+                        if let consumerPublishableKey = lookupConsumerSessionResponse.publishableKey {
+                            self.delegate?.networkingOTPView(self, didGetConsumerPublishableKey: consumerPublishableKey)
+                        }
                         self.startVerification()
                     } else {
                         self.delegate?.networkingOTPViewConsumerNotFound(self)
@@ -127,14 +196,19 @@ final class NetworkingOTPView: UIView {
 
     private func userDidEnterValidOTPCode(_ otpCode: String) {
         otpTextField.resignFirstResponder()
+        showLoadingView(true)
+        delegate?.networkingOTPViewWillConfirmVerification(self)
 
         dataSource.confirmVerificationSession(otpCode: otpCode)
             .observe { [weak self] result in
                 guard let self = self else { return }
+                self.showLoadingView(false)
+
                 switch result {
                 case .success:
                     self.delegate?.networkingOTPViewDidConfirmVerification(self)
                 case .failure(let error):
+                    let isTerminal: Bool
                     if let errorMessage = AuthFlowHelpers.networkingOTPErrorMessage(fromError: error, otpType: self.dataSource.otpType) {
                         self.dataSource
                             .analyticsClient
@@ -146,6 +220,7 @@ final class NetworkingOTPView: UIView {
 
                         self.otpTextField.performInvalidCodeAnimation(shouldClearValue: false)
                         self.showErrorText(errorMessage)
+                        isTerminal = false
                     } else {
                         self.dataSource
                             .analyticsClient
@@ -154,9 +229,64 @@ final class NetworkingOTPView: UIView {
                                 errorName: "ConfirmVerificationSessionError",
                                 pane: self.dataSource.pane
                             )
-                        self.delegate?.networkingOTPView(self, didTerminallyFailToConfirmVerification: error)
+                        isTerminal = true
                     }
+                    self.delegate?.networkingOTPView(
+                        self,
+                        didFailToConfirmVerification: error,
+                        isTerminal: isTerminal
+                    )
                 }
             }
     }
+
+    private func applyTestModeValue() {
+        otpTextField.value = TestModeValues.otp
+        otpTextFieldDidChange()
+    }
 }
+
+#if DEBUG
+
+import SwiftUI
+
+private struct NetowrkingOTPViewRepresentable: UIViewRepresentable {
+    let theme: FinancialConnectionsTheme
+
+    func makeUIView(context: Context) -> NetworkingOTPView {
+        NetworkingOTPView(dataSource: NetworkingOTPDataSourceImplementation(
+            otpType: "",
+            emailAddress: "",
+            customEmailType: nil,
+            connectionsMerchantName: nil,
+            pane: .networkingLinkVerification,
+            consumerSession: nil,
+            apiClient: FinancialConnectionsAPIClient(apiClient: .shared),
+            clientSecret: "",
+            analyticsClient: FinancialConnectionsAnalyticsClient(),
+            isTestMode: false,
+            theme: theme
+        ))
+    }
+
+    func updateUIView(_ uiView: NetworkingOTPView, context: Context) {
+        uiView.otpTextField.value = "123"
+        uiView.otpTextField.becomeFirstResponder()
+    }
+}
+
+struct NetowrkingOTPView_Previews: PreviewProvider {
+    static var previews: some View {
+        NetowrkingOTPViewRepresentable(theme: .light)
+            .frame(height: 58)
+            .padding()
+            .previewDisplayName("Light theme")
+
+        NetowrkingOTPViewRepresentable(theme: .linkLight)
+            .frame(height: 58)
+            .padding()
+            .previewDisplayName("Link Light theme")
+    }
+}
+
+#endif

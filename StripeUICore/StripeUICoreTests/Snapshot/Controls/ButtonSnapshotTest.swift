@@ -6,16 +6,11 @@
 //  Copyright © 2021 Stripe, Inc. All rights reserved.
 //
 
-import iOSSnapshotTestCase
 import StripeCoreTestUtils
 @_spi(STP) import StripeUICore
+import UIKit
 
-final class ButtonSnapshotTest: FBSnapshotTestCase {
-
-    override func setUp() {
-        super.setUp()
-//        recordMode = true
-    }
+final class ButtonSnapshotTest: STPSnapshotTestCase {
 
     func testPrimary() {
         let button = Button(title: "Send")

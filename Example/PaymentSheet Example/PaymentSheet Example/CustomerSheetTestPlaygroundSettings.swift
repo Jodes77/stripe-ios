@@ -11,7 +11,13 @@ public struct CustomerSheetTestPlaygroundSettings: Codable, Equatable {
 
         case new
         case returning
-        case id
+        case customID
+    }
+    enum CustomerKeyType: String, PickerEnum {
+        static var enumName: String { "CustomerKeyType" }
+
+        case legacy
+        case customerSession = "customer_session"
     }
     enum PaymentMethodMode: String, PickerEnum {
         static var enumName: String { "PaymentMethodMode" }
@@ -71,9 +77,86 @@ public struct CustomerSheetTestPlaygroundSettings: Codable, Equatable {
         case never
         case full
     }
+    enum MerchantCountry: String, PickerEnum {
+        static var enumName: String { "MerchantCountry" }
+
+        case US
+        case FR
+    }
+    enum PreferredNetworksEnabled: String, PickerEnum {
+        static let enumName: String = "Preferred Networks (CBC)"
+
+        case on
+        case off
+
+        var displayName: String {
+            switch self {
+            case .on:
+                return "[visa, cartesBancaires]"
+            case .off:
+                return "off"
+            }
+        }
+    }
+    enum AllowsRemovalOfLastSavedPaymentMethod: String, PickerEnum {
+        static let enumName: String = "AllowsRemovalOfLastSavedPaymentMethod"
+
+        case on
+        case off
+    }
+    enum PaymentMethodRemove: String, PickerEnum {
+        static let enumName: String = "PaymentMethodRemove"
+
+        case enabled
+        case disabled
+    }
+    enum PaymentMethodRemoveLast: String, PickerEnum {
+        static let enumName: String = "PaymentMethodRemoveLast"
+
+        case enabled
+        case disabled
+    }
+    enum PaymentMethodAllowRedisplayFilters: String, PickerEnum {
+        static var enumName: String { "PaymentMethodRedisplayFilters" }
+
+        case always
+        case limited
+        case unspecified
+        case unspecified_limited_always
+        case notSet
+
+        func arrayValue() -> [String]? {
+            switch self {
+            case .always:
+                return ["always"]
+            case .limited:
+                return ["limited"]
+            case .unspecified:
+                return ["unspecified"]
+            case .unspecified_limited_always:
+                return ["unspecified", "limited", "always"]
+            case .notSet:
+                return nil
+            }
+        }
+    }
+
+    enum CardBrandAcceptance: String, PickerEnum {
+        static let enumName: String = "cardBrandAcceptance"
+        case all
+        case blockAmEx
+        case allowVisa
+    }
+
+    enum AllowsSetAsDefaultPM: String, PickerEnum {
+        static let enumName: String = "allowsSetAsDefaultPM"
+        case on
+        case off
+    }
 
     var customerMode: CustomerMode
     var customerId: String?
+    var customerKeyType: CustomerKeyType
     var paymentMethodMode: PaymentMethodMode
     var applePay: ApplePay
     var headerTextForSelectionScreen: String?
@@ -85,10 +168,19 @@ public struct CustomerSheetTestPlaygroundSettings: Codable, Equatable {
     var collectEmail: BillingDetailsEmail
     var collectPhone: BillingDetailsPhone
     var collectAddress: BillingDetailsAddress
+    var merchantCountryCode: MerchantCountry
+    var preferredNetworksEnabled: PreferredNetworksEnabled
+    var allowsRemovalOfLastSavedPaymentMethod: AllowsRemovalOfLastSavedPaymentMethod
+    var paymentMethodRemove: PaymentMethodRemove
+    var paymentMethodRemoveLast: PaymentMethodRemoveLast
+    var paymentMethodAllowRedisplayFilters: PaymentMethodAllowRedisplayFilters
+    var cardBrandAcceptance: CardBrandAcceptance
+    var allowsSetAsDefaultPM: AllowsSetAsDefaultPM
 
     static func defaultValues() -> CustomerSheetTestPlaygroundSettings {
         return CustomerSheetTestPlaygroundSettings(customerMode: .new,
                                                    customerId: nil,
+                                                   customerKeyType: .legacy,
                                                    paymentMethodMode: .setupIntent,
                                                    applePay: .on,
                                                    headerTextForSelectionScreen: nil,
@@ -98,7 +190,15 @@ public struct CustomerSheetTestPlaygroundSettings: Codable, Equatable {
                                                    collectName: .automatic,
                                                    collectEmail: .automatic,
                                                    collectPhone: .automatic,
-                                                   collectAddress: .automatic)
+                                                   collectAddress: .automatic,
+                                                   merchantCountryCode: .US,
+                                                   preferredNetworksEnabled: .off,
+                                                   allowsRemovalOfLastSavedPaymentMethod: .on,
+                                                   paymentMethodRemove: .enabled,
+                                                   paymentMethodRemoveLast: .enabled,
+                                                   paymentMethodAllowRedisplayFilters: .always,
+                                                   cardBrandAcceptance: .all,
+                                                   allowsSetAsDefaultPM: .off)
     }
 
     var base64Data: String {

@@ -12,7 +12,7 @@ import XCTest
 final class IDNumberTextFieldConfigurationTest: XCTestCase {
 
     func testValidationBR_CPF_CNPJ() {
-        let config = IDNumberTextFieldConfiguration(type: .BR_CPF_CNPJ, label: "")
+        let config = IDNumberTextFieldConfiguration(type: .BR_CPF_CNPJ, label: "", defaultValue: nil)
 
         // CPF is 11 digits
         verifyValid(config.validate(text: "12345678901", isOptional: false))
@@ -35,7 +35,7 @@ final class IDNumberTextFieldConfigurationTest: XCTestCase {
     }
 
     func testValidationUnspecifiedType() {
-        let config = IDNumberTextFieldConfiguration(type: nil, label: "")
+        let config = IDNumberTextFieldConfiguration(type: nil, label: "", defaultValue: nil)
         // Anything but empty string is valid
         verifyInvalidEmpty(config.validate(text: "", isOptional: false))
         verifyValid(config.validate(text: "a", isOptional: false))
@@ -47,7 +47,7 @@ final class IDNumberTextFieldConfigurationTest: XCTestCase {
     }
 
     func testDisplayTextBR_CPF_CNPJ() {
-        let config = IDNumberTextFieldConfiguration(type: .BR_CPF_CNPJ, label: "")
+        let config = IDNumberTextFieldConfiguration(type: .BR_CPF_CNPJ, label: "", defaultValue: nil)
 
         XCTAssertEqual(config.makeDisplayText(for: "").string, "")
 
@@ -57,9 +57,9 @@ final class IDNumberTextFieldConfigurationTest: XCTestCase {
         XCTAssertEqual(config.makeDisplayText(for: "12345678901").string, "123.456.789-01")
 
         // Format as CNPJ if > 11 characters
-        XCTAssertEqual(config.makeDisplayText(for: "123456789012").string, "123.456.789/012")
-        XCTAssertEqual(config.makeDisplayText(for: "12345678901234").string, "123.456.789/012-34")
-        XCTAssertEqual(config.makeDisplayText(for: "12345678901234567").string, "123.456.789/012-34")
+        XCTAssertEqual(config.makeDisplayText(for: "123456789012").string, "12.345.678/9012")
+        XCTAssertEqual(config.makeDisplayText(for: "12345678901234").string, "12.345.678/9012-34")
+        XCTAssertEqual(config.makeDisplayText(for: "12345678901234567").string, "12.345.678/9012-34")
     }
 }
 

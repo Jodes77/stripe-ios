@@ -7,6 +7,7 @@
 //
 
 import Foundation
+@_spi(STP) import StripeCore
 @_spi(STP) import StripePaymentsUI
 @_spi(STP) import StripeUICore
 import UIKit
@@ -16,10 +17,9 @@ class PaymentSheetImageLibrary {
     /// An icon representing Afterpay.
     @objc
     public class func afterpayLogo(locale: Locale = Locale.current) -> UIImage {
-        switch (locale.languageCode, locale.regionCode) {
-        case ("en", "GB"):
+        if AfterpayPriceBreakdownView.shouldUseClearpayBrand(for: locale) {
             return self.safeImageNamed("clearpay_mark", templateIfAvailable: true)
-        default:
+        } else {
             return self.safeImageNamed("afterpay_mark", templateIfAvailable: true)
         }
     }
@@ -27,9 +27,6 @@ class PaymentSheetImageLibrary {
     /// This returns the appropriate icon for the affirm logo
     @objc
     public class func affirmLogo() -> UIImage {
-        if isDarkMode(){
-            return Image.affirm_copy_dark.makeImage()
-        }
         return Image.affirm_copy.makeImage()
     }
 
@@ -80,31 +77,31 @@ class PaymentSheetImageLibrary {
 
 extension STPCardBrand {
     /// Returns a borderless image of the card brand's logo
-    func makeCarouselImage() -> UIImage {
-        let imageName: String
+    func makeSavedPaymentMethodCellImage(overrideUserInterfaceStyle: UIUserInterfaceStyle?) -> UIImage {
+        let image: Image
         switch self {
         case .JCB:
-            imageName = "card_jcb"
+            image = .carousel_card_jcb
         case .visa:
-            imageName = "card_visa"
+            image = .carousel_card_visa
         case .amex:
-            imageName = "card_amex"
+            image = .carousel_card_amex
         case .mastercard:
-            imageName = "card_mastercard"
+            image = .carousel_card_mastercard
         case .discover:
-            imageName = "card_discover"
+            image = .carousel_card_discover
         case .dinersClub:
-            imageName = "card_diners"
+            image = .carousel_card_diners
         case .unionPay:
-            imageName = "card_unionpay"
+            image = .carousel_card_unionpay
         case .cartesBancaires:
-            imageName = "card_cartes_bancaires"
+            image = .carousel_card_cartes_bancaires
         case .unknown:
-            imageName = "card_unknown"
+            image = .carousel_card_unknown
         @unknown default:
-            imageName = "card_unknown"
+            image = .carousel_card_unknown
         }
-        let brandImage = STPImageLibrary.safeImageNamed(imageName, templateIfAvailable: false)
+        let brandImage = image.makeImage(overrideUserInterfaceStyle: overrideUserInterfaceStyle)
         // Don't allow tint colors to change the brand images.
         return brandImage.withRenderingMode(.alwaysOriginal)
     }

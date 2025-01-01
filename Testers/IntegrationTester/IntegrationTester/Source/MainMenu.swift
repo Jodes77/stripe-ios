@@ -19,8 +19,6 @@ struct IntegrationView: View {
             CardSetupIntentsView()
         case .applePay:
             ApplePayView()
-        case .fpx:
-            FPXView()
         case .aubecsDebit:
             AUBECSDebitView()
         case .sepaDebit:
@@ -29,7 +27,9 @@ struct IntegrationView: View {
              .iDEAL,
              .alipay,
              .bacsDebit,
-             .weChatPay:
+             .weChatPay,
+             .klarna,
+             .paypal:
             PaymentMethodView(integrationMethod: integrationMethod)
         case .oxxo,
              .giropay,

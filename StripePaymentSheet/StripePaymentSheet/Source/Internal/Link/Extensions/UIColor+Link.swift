@@ -17,23 +17,27 @@ extension UIColor {
     /// Brand color for Link.
     ///
     /// Use it as accent color for controls and activity indicators.
-    static let linkBrand: UIColor = UIColor(red: 0.2, green: 0.867, blue: 0.702, alpha: 1.0)
+    static var linkBrand: UIColor {
+        UIColor(red: 0, green: 0.84, blue: 0.44, alpha: 1.0)
+    }
 
     /// Darker version of the brand color.
     ///
     /// Use it as accent color on small UI elements or text links.
     static let linkBrandDark: UIColor = UIColor(red: 0.020, green: 0.659, blue: 0.498, alpha: 1.0)
 
-    /// Level 600 variant of Link brand color.
-    ///
-    /// Use for separator bars over the Link brand color.
-    static let linkBrand600: UIColor = UIColor(red: 0.102, green: 0.773, blue: 0.608, alpha: 1.0)
-
     /// Main background color.
     static let linkBackground: UIColor = .dynamic(
         light: .white,
         dark: UIColor(red: 0.11, green: 0.11, blue: 0.118, alpha: 1)
     )
+
+    /// Level 400 variant of Link brand color.
+    ///
+    /// Use for separator bars over the Link brand color.
+    static var linkBrand400: UIColor {
+        UIColor(red: 0.0, green: 0.64, blue: 0.33, alpha: 1.0)
+    }
 
     /// Color of the Link logo in the navigation bar.
     static let linkNavLogo: UIColor = .dynamic(
@@ -83,7 +87,9 @@ extension UIColor {
     static let linkToastForeground: UIColor = .white
 
     /// Foreground color of the primary button.
-    static let linkPrimaryButtonForeground: UIColor = UIColor(red: 0.012, green: 0.141, blue: 0.149, alpha: 1.0)
+    static var linkPrimaryButtonForeground: UIColor {
+        UIColor(red: 0, green: 0.12, blue: 0.06, alpha: 1.0)
+    }
 
     /// Foreground color of the secondary button.
     static let linkSecondaryButtonForeground: UIColor = .dynamic(
@@ -120,7 +126,6 @@ extension UIColor {
         light: UIColor(red: 1.0, green: 0.184, blue: 0.298, alpha: 1.0),
         dark: UIColor(red: 1.0, green: 0.184, blue: 0.298, alpha: 1.0)
     )
-
 }
 
 // MARK: - Text color
@@ -159,6 +164,14 @@ extension UIColor {
         forBackgroundColor backgroundColor: UIColor,
         traitCollection: UITraitCollection = .current
     ) -> UIColor {
+        #if canImport(CompositorServices)
+        let resolvedLightModeColor = resolvedColor(with: traitCollection.modifyingTraits({ mutableTraits in
+            mutableTraits.userInterfaceStyle = .light
+        }))
+        let resolvedDarkModeColor = resolvedColor(with: traitCollection.modifyingTraits({ mutableTraits in
+            mutableTraits.userInterfaceStyle = .dark
+        }))
+        #else
         let resolvedLightModeColor = resolvedColor(with: UITraitCollection(traitsFrom: [
             traitCollection,
             UITraitCollection(userInterfaceStyle: .light),
@@ -168,6 +181,7 @@ extension UIColor {
             traitCollection,
             UITraitCollection(userInterfaceStyle: .dark),
         ]))
+        #endif
 
         let resolvedBackgroundColor = backgroundColor.resolvedColor(with: traitCollection)
 

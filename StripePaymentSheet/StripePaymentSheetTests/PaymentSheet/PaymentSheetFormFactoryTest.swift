@@ -11,11 +11,13 @@ import XCTest
 @testable@_spi(STP) import StripeCore
 @testable@_spi(STP) import StripePayments
 @testable@_spi(STP) import StripePaymentSheet
+@testable@_spi(STP) import StripePaymentsTestUtils
 @testable@_spi(STP) import StripePaymentsUI
 @testable@_spi(STP) import StripeUICore
-@testable@_spi(STP) import StripePaymentsTestUtils
 
 class MockElement: Element {
+    var collectsUserInput: Bool = false
+
     var paramsUpdater: (IntentConfirmParams) -> IntentConfirmParams?
 
     init(
@@ -38,61 +40,35 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         configuration.defaultBillingDetails.name = "Name"
         configuration.defaultBillingDetails.email = "email@stripe.com"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(),
+            elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sepa_debit")
+            paymentMethod: .stripe(.SEPADebit)
         )
         let name = factory.makeName()
         let email = factory.makeEmail()
         let checkbox = factory.makeSaveCheckbox { _ in }
 
         let form = FormElement(elements: [name, email, checkbox])
-        let params = form.updateParams(params: IntentConfirmParams(type: .dynamic("sepa_debit")))
+        let params = form.updateParams(params: IntentConfirmParams(type: .stripe(.SEPADebit)))
 
         XCTAssertEqual(params?.paymentMethodParams.billingDetails?.name, "Name")
         XCTAssertEqual(params?.paymentMethodParams.billingDetails?.email, "email@stripe.com")
         XCTAssertEqual(params?.paymentMethodParams.type, .SEPADebit)
-        XCTAssertEqual(params?.paymentMethodType, .dynamic("sepa_debit"))
-    }
-
-    func testSpecFromJSONProvider() {
-        let e = expectation(description: "Loads form specs file")
-        let provider = FormSpecProvider()
-        provider.load { loaded in
-            XCTAssertTrue(loaded)
-            e.fulfill()
-        }
-        waitForExpectations(timeout: 1, handler: nil)
-        let configuration = PaymentSheet.Configuration()
-        let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
-            configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("eps")
-        )
-
-        guard let spec = factory.specFromJSONProvider(provider: provider) else {
-            XCTFail("Unable to load EPS Spec")
-            return
-        }
-
-        XCTAssertEqual(spec.fields.count, 5)
-        XCTAssertEqual(
-            spec.fields.first,
-            .name(FormSpec.NameFieldSpec(apiPath: ["v1": "billing_details[name]"], translationId: nil))
-        )
-        XCTAssertEqual(spec.type, "eps")
+        XCTAssertEqual(params?.paymentMethodType, .stripe(.SEPADebit))
     }
 
     func testNameOverrideApiPathBySpec() {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.name = "someName"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(),
+            elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.iDEAL) // We use iDEAL because it has a LUXE form spec
         )
         let name = factory.makeName(apiPath: "custom_location[name]")
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.iDEAL))
 
         let updatedParams = name.updateParams(params: params)
 
@@ -102,14 +78,13 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 as! String,
             "someName"
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
+        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .iDEAL)
 
         // Using the params as previous customer input...
         let name_with_previous_customer_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method"),
+            paymentMethod: .stripe(.iDEAL),
             previousCustomerInput: updatedParams
         ).makeName(apiPath: "custom_location[name]")
         // ...should result in a valid element filled out with the previous customer input
@@ -121,12 +96,12 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.name = "someName"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.card)
         )
         let name = factory.makeName()
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.card))
 
         let updatedParams = name.updateParams(params: params)
 
@@ -134,14 +109,13 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertNil(
             updatedParams?.paymentMethodParams.additionalAPIParameters["custom_location[name]"]
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
+        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .card)
 
         // Using the params as previous customer input...
         let name_with_previous_customer_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method"),
+            paymentMethod: .stripe(.card),
             previousCustomerInput: updatedParams
         ).makeName()
         // ...should result in a valid element filled out with the previous customer input
@@ -153,23 +127,22 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.name = "someName"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
         let nameSpec = FormSpec.NameFieldSpec(
             apiPath: ["v1": "custom_location[name]"],
             translationId: nil
         )
         let spec = FormSpec(
-            type: "mock_pm",
+            type: "grabpay",
             async: false,
             fields: [.name(nameSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -179,28 +152,26 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 as! String,
             "someName"
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
+        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .grabPay)
     }
 
     func testNameValueWrittenToLocationUndefinedAPIPath() {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.name = "someName"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
         let nameSpec = FormSpec.NameFieldSpec(apiPath: nil, translationId: nil)
         let spec = FormSpec(
-            type: "mock_pm",
+            type: "grabpay",
             async: false,
             fields: [.name(nameSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -208,20 +179,19 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             updatedParams?.paymentMethodParams.additionalAPIParameters["custom_location[name]"]
         )
         XCTAssertEqual(updatedParams?.paymentMethodParams.billingDetails?.name, "someName")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
+        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .grabPay)
     }
 
     func testEmailOverrideApiPathBySpec() {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.email = "email@stripe.com"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
         let email = factory.makeEmail(apiPath: "custom_location[email]")
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = email.updateParams(params: params)
 
@@ -231,14 +201,13 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             "email@stripe.com"
         )
         XCTAssertNil(updatedParams?.paymentMethodParams.billingDetails?.email)
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
+        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .grabPay)
 
         // Using the params as previous customer input...
         let email_with_previous_customer_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method"),
+            paymentMethod: .stripe(.grabPay),
             previousCustomerInput: updatedParams
         ).makeName(apiPath: "custom_location[email]")
         // ...should result in a valid element filled out with the previous customer input
@@ -250,12 +219,12 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.email = "email@stripe.com"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
         let email = factory.makeEmail()
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = email.updateParams(params: params)
 
@@ -263,14 +232,13 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertNil(
             updatedParams?.paymentMethodParams.additionalAPIParameters["custom_location[email]"]
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
+        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .grabPay)
 
         // Using the params as previous customer input...
         let email_with_previous_customer_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method"),
+            paymentMethod: .stripe(.grabPay),
             previousCustomerInput: updatedParams
         ).makeEmail()
         // ...should result in a valid element filled out with the previous customer input
@@ -282,20 +250,19 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.email = "email@stripe.com"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
         let emailSpec = FormSpec.BaseFieldSpec(apiPath: ["v1": "custom_location[email]"])
         let spec = FormSpec(
             type: "mock_pm",
             async: false,
             fields: [.email(emailSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -305,20 +272,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 as! String,
             "email@stripe.com"
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
     }
 
     func testPhoneValueWrittenToDefaultLocation() {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.phone = "+15555555555"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
         let phoneElement = factory.makePhone()
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = phoneElement.updateParams(params: params)
 
@@ -329,9 +294,9 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         // Using the params as previous customer input...
         let phone_with_previous_customer_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method"),
+            paymentMethod: .stripe(.grabPay),
             previousCustomerInput: updatedParams
         ).makePhone()
         // ...should result in a valid element filled out with the previous customer input
@@ -343,9 +308,9 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         var configuration = PaymentSheet.Configuration()
         configuration.defaultBillingDetails.email = "email@stripe.com"
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mock_payment_method")
+            paymentMethod: .stripe(.grabPay)
         )
 
         let emailSpec = FormSpec.BaseFieldSpec(apiPath: nil)
@@ -353,11 +318,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             type: "mock_pm",
             async: false,
             fields: [.email(emailSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("mock_payment_method"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -365,16 +329,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertNil(
             updatedParams?.paymentMethodParams.additionalAPIParameters["custom_location[email]"]
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "mock_payment_method")
-        XCTAssertEqual(updatedParams?.paymentMethodParams.type, .unknown)
     }
 
     func testMakeFormElement_dropdown() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sepa_debit")
+            paymentMethod: .stripe(.SEPADebit)
         )
         let selectorSpec = FormSpec.SelectorSpec(
             translationId: .eps_bank,
@@ -388,11 +350,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             type: "sepa_debit",
             async: false,
             fields: [.selector(selectorSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("sepa_debit"))
+        let params = IntentConfirmParams(type: .stripe(.SEPADebit))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -401,23 +362,22 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 as! String,
             "123"
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "sepa_debit")
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .SEPADebit)
 
         // Given a dropdown...
         let dropdown = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sepa_debit")
+            paymentMethod: .stripe(.SEPADebit)
         ).makeDropdown(for: selectorSpec)
         // ...with a selection *different* from the default of 0
         dropdown.element.select(index: 1)
         // ...using the params as previous customer input to create a new dropdown...
-        let previousCustomerInput = dropdown.updateParams(params: IntentConfirmParams(type: .dynamic("sepa_debit")))
+        let previousCustomerInput = dropdown.updateParams(params: IntentConfirmParams(type: .stripe(.SEPADebit)))
         let dropdown_with_previous_customer_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sepa_debit"),
+            paymentMethod: .stripe(.SEPADebit),
             previousCustomerInput: previousCustomerInput
         ).makeDropdown(for: selectorSpec)
 
@@ -429,19 +389,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_KlarnaCountry_UndefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("klarna")
+            paymentMethod: .stripe(.klarna)
         )
         let spec = FormSpec(
             type: "klarna",
             async: false,
             fields: [.klarna_country(.init(apiPath: nil))],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("klarna"))
+        let params = IntentConfirmParams(type: .stripe(.klarna))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -458,19 +417,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_KlarnaCountry_DefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("klarna")
+            paymentMethod: .stripe(.klarna)
         )
         let spec = FormSpec(
             type: "klarna",
             async: false,
             fields: [.klarna_country(.init(apiPath: ["v1": "billing_details[address][country]"]))],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("klarna"))
+        let params = IntentConfirmParams(type: .stripe(.klarna))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -488,14 +446,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_BSBNumber() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let bsb = factory.makeBSB(apiPath: nil)
         bsb.element.setText("000-000")
 
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         let updatedParams = bsb.updateParams(params: params)
 
         XCTAssertEqual(updatedParams?.paymentMethodParams.auBECSDebit?.bsbNumber, "000000")
@@ -506,28 +464,28 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .AUBECSDebit)
         // Using the params as previous customer input...
         let bsb_with_previous_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit"),
+            paymentMethod: .stripe(.AUBECSDebit),
             previousCustomerInput: updatedParams
         ).makeBSB()
         // ...should result in a valid, filled out element
         XCTAssert(bsb_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = bsb_with_previous_input.updateParams(params: .init(type: .dynamic("au_becs_debit")))
+        let updatedParams_with_previous_input = bsb_with_previous_input.updateParams(params: .init(type: .stripe(.AUBECSDebit)))
         XCTAssertEqual(updatedParams_with_previous_input?.paymentMethodParams.auBECSDebit?.bsbNumber, "000000")
     }
 
     func testMakeFormElement_BSBNumber_withAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let bsb = factory.makeBSB(apiPath: "custom_path[bsb_number]")
         bsb.element.setText("000-000")
 
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         let updatedParams = bsb.updateParams(params: params)
 
         XCTAssertNil(updatedParams?.paymentMethodParams.auBECSDebit?.bsbNumber)
@@ -540,14 +498,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .AUBECSDebit)
         // Using the params as previous customer input...
         let bsb_with_previous_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit"),
+            paymentMethod: .stripe(.AUBECSDebit),
             previousCustomerInput: updatedParams
         ).makeBSB(apiPath: "custom_path[bsb_number]")
         // ...should result in a valid, filled out element
         XCTAssert(bsb_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = bsb_with_previous_input.updateParams(params: .init(type: .dynamic("au_becs_debit")))
+        let updatedParams_with_previous_input = bsb_with_previous_input.updateParams(params: .init(type: .stripe(.AUBECSDebit)))
         XCTAssertEqual(
             updatedParams_with_previous_input?.paymentMethodParams.additionalAPIParameters["custom_path[bsb_number]"]
                 as! String,
@@ -558,19 +516,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_BSBNumber_UndefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let spec = FormSpec(
             type: "au_becs_debit",
             async: false,
             fields: [.au_becs_bsb_number(.init(apiPath: nil))],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -588,33 +545,32 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         // Using the params as previous customer input...
         let bsb_with_previous_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit"),
+            paymentMethod: .stripe(.AUBECSDebit),
             previousCustomerInput: updatedParams
         ).makeBSB()
         // ...should result in a valid, filled out element
         XCTAssert(bsb_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = bsb_with_previous_input.updateParams(params: .init(type: .dynamic("au_becs_debit")))
+        let updatedParams_with_previous_input = bsb_with_previous_input.updateParams(params: .init(type: .stripe(.AUBECSDebit)))
         XCTAssertEqual(updatedParams_with_previous_input?.paymentMethodParams.auBECSDebit?.bsbNumber, "000000")
     }
 
     func testMakeFormElement_BSBNumber_DefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let spec = FormSpec(
             type: "au_becs_debit",
             async: false,
             fields: [.au_becs_bsb_number(.init(apiPath: ["v1": "au_becs_debit[bsb_number]"]))],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -636,19 +592,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_AUBECSAccountNumber_UndefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let spec = FormSpec(
             type: "au_becs_debit",
             async: false,
             fields: [.au_becs_account_number(.init(apiPath: nil))],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -668,23 +623,23 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         // Using the params as previous customer input...
         let form_with_previous_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit"),
+            paymentMethod: .stripe(.AUBECSDebit),
             previousCustomerInput: updatedParams
         ).makeFormElementFromSpec(spec: spec)
         // ...should result in a valid, filled out element
         XCTAssert(form_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .dynamic("au_becs_debit")))
+        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .stripe(.AUBECSDebit)))
         XCTAssertEqual(updatedParams_with_previous_input?.paymentMethodParams.auBECSDebit?.accountNumber, "000123456")
     }
 
     func testMakeFormElement_AUBECSAccountNumber_DefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let spec = FormSpec(
             type: "au_becs_debit",
@@ -692,11 +647,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             fields: [
                 .au_becs_account_number(.init(apiPath: ["v1": "au_becs_debit[account_number]"])),
             ],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -717,14 +671,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         // Using the params as previous customer input...
         let form_with_previous_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit"),
+            paymentMethod: .stripe(.AUBECSDebit),
             previousCustomerInput: updatedParams
         ).makeFormElementFromSpec(spec: spec)
         // ...should result in a valid, filled out element
         XCTAssert(form_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .dynamic("au_becs_debit")))
+        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .stripe(.AUBECSDebit)))
         XCTAssertEqual(
             updatedParams_with_previous_input?.paymentMethodParams.additionalAPIParameters[
                 "au_becs_debit[account_number]"
@@ -736,14 +690,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_AUBECSAccountNumber() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let accountNum = factory.makeAUBECSAccountNumber(apiPath: nil)
         accountNum.element.setText("000123456")
 
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         let updatedParams = accountNum.updateParams(params: params)
 
         XCTAssertEqual(updatedParams?.paymentMethodParams.auBECSDebit?.accountNumber, "000123456")
@@ -759,14 +713,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_AUBECSAccountNumber_withAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit")
+            paymentMethod: .stripe(.AUBECSDebit)
         )
         let accountNum = factory.makeAUBECSAccountNumber(apiPath: "custom_path[account_number]")
         accountNum.element.setText("000123456")
 
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         let updatedParams = accountNum.updateParams(params: params)
 
         XCTAssertNil(updatedParams?.paymentMethodParams.auBECSDebit?.accountNumber)
@@ -783,19 +737,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_BillingAddress_UndefinedAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sofort")
+            paymentMethod: .stripe(.sofort)
         )
         let spec = FormSpec(
             type: "sofort",
             async: false,
             fields: [.country(.init(apiPath: nil, allowedCountryCodes: ["AT", "BE"]))],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("sofort"))
+        let params = IntentConfirmParams(type: .stripe(.sofort))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -808,9 +761,9 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_Country_DefinedAPIPath_forSofort() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sofort")
+            paymentMethod: .stripe(.sofort)
         )
         let spec = FormSpec(
             type: "sofort",
@@ -820,11 +773,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                     .init(apiPath: ["v1": "sofort[country]"], allowedCountryCodes: ["AT", "BE"])
                 ),
             ],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("sofort"))
+        let params = IntentConfirmParams(type: .stripe(.sofort))
 
         let updatedParams = formElement.updateParams(params: params)
 
@@ -841,14 +793,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_Country() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sofort")
+            paymentMethod: .stripe(.sofort)
         )
         let country = factory.makeCountry(countryCodes: ["AT", "BE"], apiPath: nil)
         (country as! PaymentMethodElementWrapper<DropdownFieldElement>).element.select(index: 1) // select a different index than the default of 0
 
-        let params = IntentConfirmParams(type: .dynamic("sofort"))
+        let params = IntentConfirmParams(type: .stripe(.sofort))
         let updatedParams = country.updateParams(params: params)
 
         XCTAssertEqual(updatedParams?.paymentMethodParams.billingDetails?.address?.country, "BE")
@@ -858,14 +810,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         // Using the params as previous customer input...
         let country_with_previous_input = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sofort"),
+            paymentMethod: .stripe(.sofort),
             previousCustomerInput: updatedParams
         ).makeCountry(countryCodes: ["AT", "BE"], apiPath: nil)
         // ...should result in a valid, filled out element
         XCTAssert(country_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = country_with_previous_input.updateParams(params: .init(type: .dynamic("sofort")))
+        let updatedParams_with_previous_input = country_with_previous_input.updateParams(params: .init(type: .stripe(.sofort)))
         XCTAssertEqual(updatedParams_with_previous_input?.paymentMethodParams.billingDetails?.address?.country, "BE")
     }
 
@@ -873,9 +825,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let configuration = PaymentSheet.Configuration()
         func makeCountry(previousCustomerInput: IntentConfirmParams?) -> PaymentMethodElement {
             let factory = PaymentSheetFormFactory(
-                intent: .paymentIntent(STPFixtures.paymentIntent()),
+                intent: ._testValue(),
+                elementsSession: ._testCardValue(),
                 configuration: .paymentSheet(configuration),
-                paymentMethod: .dynamic("sofort"),
+                paymentMethod: .stripe(.sofort),
                 previousCustomerInput: previousCustomerInput
             )
             let country = factory.makeCountry(countryCodes: ["AT", "BE"], apiPath: "sofort[country]")
@@ -884,7 +837,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let country = makeCountry(previousCustomerInput: nil)
         (country as! PaymentMethodElementWrapper<DropdownFieldElement>).element.select(index: 1) // select a different index than the default of 0
 
-        let params = IntentConfirmParams(type: .dynamic("sofort"))
+        let params = IntentConfirmParams(type: .stripe(.sofort))
         let updatedParams = country.updateParams(params: params)
 
         XCTAssertNil(updatedParams?.paymentMethodParams.sofort?.country)
@@ -900,7 +853,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let country_with_previous_input = makeCountry(previousCustomerInput: updatedParams)
         // ...should result in a valid, filled out element
         XCTAssert(country_with_previous_input.validationState == .valid)
-        let updatedParams_with_previous_input = country_with_previous_input.updateParams(params: .init(type: .dynamic("sofort")))
+        let updatedParams_with_previous_input = country_with_previous_input.updateParams(params: .init(type: .stripe(.sofort)))
         XCTAssertEqual(
             updatedParams_with_previous_input?.paymentMethodParams.additionalAPIParameters["sofort[country]"] as! String,
             "BE"
@@ -911,22 +864,22 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let configuration = PaymentSheet.Configuration()
         func makeForm(previousCustomerInput: IntentConfirmParams?) -> PaymentMethodElementWrapper<FormElement> {
             let factory = PaymentSheetFormFactory(
-                intent: .paymentIntent(STPFixtures.paymentIntent()),
+                intent: ._testValue(),
+                elementsSession: ._testCardValue(),
                 configuration: .paymentSheet(configuration),
-                paymentMethod: .dynamic("sepa_debit"),
+                paymentMethod: .stripe(.SEPADebit),
                 previousCustomerInput: previousCustomerInput
             )
             let spec = FormSpec(
                 type: "sepa_debit",
                 async: false,
                 fields: [.iban(.init(apiPath: nil))],
-                selectorIcon: nil,
-                nextActionSpec: nil
+                selectorIcon: nil
             )
             return factory.makeFormElementFromSpec(spec: spec)
         }
         let formElement = makeForm(previousCustomerInput: nil)
-        let params = IntentConfirmParams(type: .dynamic("sepa_debit"))
+        let params = IntentConfirmParams(type: .stripe(.SEPADebit))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -937,13 +890,12 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         XCTAssertEqual(updatedParams?.paymentMethodParams.sepaDebit?.iban, "GB33BUKB20201555555555")
         XCTAssert(updatedParams?.paymentMethodParams.additionalAPIParameters.isEmpty ?? false)
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "sepa_debit")
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .SEPADebit)
 
         // Using the params as previous customer input...
         let form_with_previous_input = makeForm(previousCustomerInput: updatedParams)
         // ...should result in a valid, filled out element
-        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .dynamic("sepa_debit")))
+        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .stripe(.SEPADebit)))
         XCTAssertEqual(updatedParams_with_previous_input?.paymentMethodParams.sepaDebit?.iban, "GB33BUKB20201555555555")
     }
 
@@ -951,23 +903,23 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let configuration = PaymentSheet.Configuration()
         func makeForm(previousCustomerInput: IntentConfirmParams?) -> PaymentMethodElementWrapper<FormElement> {
             let factory = PaymentSheetFormFactory(
-                intent: .paymentIntent(STPFixtures.paymentIntent()),
+                intent: ._testValue(),
+                elementsSession: ._testCardValue(),
                 configuration: .paymentSheet(configuration),
-                paymentMethod: .dynamic("sepa_debit"),
+                paymentMethod: .stripe(.SEPADebit),
                 previousCustomerInput: previousCustomerInput
             )
             let spec = FormSpec(
                 type: "sepa_debit",
                 async: false,
-                fields: [.iban(.init(apiPath: ["v1": "sepa_debit[iban]"]))],
-                selectorIcon: nil,
-                nextActionSpec: nil
+                fields: [.iban(.init(apiPath: ["v1": "SEPADebit[iban]"]))],
+                selectorIcon: nil
             )
             return factory.makeFormElementFromSpec(spec: spec)
         }
 
         let formElement = makeForm(previousCustomerInput: nil)
-        let params = IntentConfirmParams(type: .dynamic("sepa_debit"))
+        let params = IntentConfirmParams(type: .stripe(.SEPADebit))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -978,19 +930,18 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         XCTAssertNil(updatedParams?.paymentMethodParams.sepaDebit?.iban)
         XCTAssertEqual(
-            updatedParams?.paymentMethodParams.additionalAPIParameters["sepa_debit[iban]"]
+            updatedParams?.paymentMethodParams.additionalAPIParameters["SEPADebit[iban]"]
                 as! String,
             "GB33BUKB20201555555555"
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "sepa_debit")
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .SEPADebit)
 
         // Using the params as previous customer input...
         let form_with_previous_input = makeForm(previousCustomerInput: updatedParams)
         // ...should result in a valid, filled out element
-        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .dynamic("sepa_debit")))
+        let updatedParams_with_previous_input = form_with_previous_input.updateParams(params: .init(type: .stripe(.SEPADebit)))
         XCTAssertEqual(
-            updatedParams_with_previous_input?.paymentMethodParams.additionalAPIParameters["sepa_debit[iban]"]
+            updatedParams_with_previous_input?.paymentMethodParams.additionalAPIParameters["SEPADebit[iban]"]
                 as! String,
             "GB33BUKB20201555555555"
         )
@@ -999,65 +950,62 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testMakeFormElement_Iban() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sepa_debit")
+            paymentMethod: .stripe(.SEPADebit)
         )
         let iban = factory.makeIban(apiPath: nil)
         iban.element.setText("GB33BUKB20201555555555")
 
-        let params = IntentConfirmParams(type: .dynamic("sepa_debit"))
+        let params = IntentConfirmParams(type: .stripe(.SEPADebit))
         let updatedParams = iban.updateParams(params: params)
 
         XCTAssertEqual(updatedParams?.paymentMethodParams.sepaDebit?.iban, "GB33BUKB20201555555555")
         XCTAssert(updatedParams?.paymentMethodParams.additionalAPIParameters.isEmpty ?? false)
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "sepa_debit")
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .SEPADebit)
     }
 
     func testMakeFormElement_Iban_withAPIPath() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("sepa_debit")
+            paymentMethod: .stripe(.SEPADebit)
         )
-        let iban = factory.makeIban(apiPath: "sepa_debit[iban]")
+        let iban = factory.makeIban(apiPath: "SEPADebit[iban]")
         iban.element.setText("GB33BUKB20201555555555")
 
-        let params = IntentConfirmParams(type: .dynamic("sepa_debit"))
+        let params = IntentConfirmParams(type: .stripe(.SEPADebit))
         let updatedParams = iban.updateParams(params: params)
 
         XCTAssertNil(updatedParams?.paymentMethodParams.sepaDebit?.iban)
         XCTAssertEqual(
-            updatedParams?.paymentMethodParams.additionalAPIParameters["sepa_debit[iban]"]
+            updatedParams?.paymentMethodParams.additionalAPIParameters["SEPADebit[iban]"]
                 as! String,
             "GB33BUKB20201555555555"
         )
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "sepa_debit")
         XCTAssertEqual(updatedParams?.paymentMethodParams.type, .SEPADebit)
     }
 
     func testMakeFormElement_email_with_unknownField() {
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("luxe_bucks")
+            paymentMethod: .stripe(.grabPay)
         )
         let spec = FormSpec(
-            type: "luxe_bucks",
+            type: "grabpay",
             async: false,
             fields: [
                 .unknown("some_unknownField1"),
                 .email(.init(apiPath: nil)),
                 .unknown("some_unknownField2"),
             ],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
         let formElement = factory.makeFormElementFromSpec(spec: spec)
-        let params = IntentConfirmParams(type: .dynamic("luxe_bucks"))
+        let params = IntentConfirmParams(type: .stripe(.grabPay))
         guard let wrappedElement = firstWrappedTextFieldElement(formElement: formElement.element) else {
             XCTFail("Unable to get firstElement")
             return
@@ -1068,7 +1016,6 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
         XCTAssertEqual(updatedParams?.paymentMethodParams.billingDetails?.email, "email@stripe.com")
         XCTAssert(updatedParams?.paymentMethodParams.additionalAPIParameters.isEmpty ?? false)
-        XCTAssertEqual(updatedParams?.paymentMethodParams.rawTypeString, "luxe_bucks")
     }
 
     func testMakeFormElement_BillingAddress() {
@@ -1085,9 +1032,9 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         ]
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("au_becs_debit"),
+            paymentMethod: .stripe(.AUBECSDebit),
             addressSpecProvider: addressSpecProvider
         )
         let accountNum = factory.makeBillingAddressSection(countries: nil)
@@ -1097,7 +1044,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         accountNum.element.state?.setRawData("California")
         accountNum.element.postalCode?.setText("55555")
 
-        let params = IntentConfirmParams(type: .dynamic("au_becs_debit"))
+        let params = IntentConfirmParams(type: .stripe(.AUBECSDebit))
         let updatedParams = accountNum.updateParams(params: params)
 
         XCTAssertEqual(
@@ -1126,18 +1073,17 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let addressSpecProvider = addressSpecProvider(countries: ["US", "FR"])
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mockPM"),
+            paymentMethod: .stripe(.grabPay),
             addressSpecProvider: addressSpecProvider
         )
         let billingAddressSpec = FormSpec.BillingAddressSpec(allowedCountryCodes: nil)
         let spec = FormSpec(
-            type: "mockPM",
+            type: "grabpay",
             async: false,
             fields: [.billing_address(billingAddressSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
 
         let formElement = factory.makeFormElementFromSpec(spec: spec)
@@ -1156,18 +1102,17 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         let addressSpecProvider = addressSpecProvider(countries: ["US", "FR"])
         let configuration = PaymentSheet.Configuration()
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent()),
+            intent: ._testValue(), elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("mockPM"),
+            paymentMethod: .stripe(.grabPay),
             addressSpecProvider: addressSpecProvider
         )
         let billingAddressSpec = FormSpec.BillingAddressSpec(allowedCountryCodes: ["FR"])
         let spec = FormSpec(
-            type: "mockPM",
+            type: "grabpay",
             async: false,
             fields: [.billing_address(billingAddressSpec)],
-            selectorIcon: nil,
-            nextActionSpec: nil
+            selectorIcon: nil
         )
 
         let formElement = factory.makeFormElementFromSpec(spec: spec)
@@ -1183,7 +1128,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
 
     func testNonCardsAndUSBankAccountsDontHaveSaveForFutureUseCheckbox() {
         let configuration = PaymentSheet.Configuration()
-        let intent = Intent.paymentIntent(STPFixtures.paymentIntent())
+        let intent = Intent._testValue()
         let specProvider = AddressSpecProvider()
         specProvider.addressSpecs = [
             "US": AddressSpec(
@@ -1206,16 +1151,20 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         }) {
             let factory = PaymentSheetFormFactory(
                 intent: intent,
+                elementsSession: ._testCardValue(),
                 configuration: .paymentSheet(configuration),
-                paymentMethod: PaymentSheet.PaymentMethodType(
-                    from: STPPaymentMethod.string(from: type)!
-                ),
+                paymentMethod: .stripe(type),
                 addressSpecProvider: specProvider
             )
 
             var form = factory.make()
             if let wrapper = form as? PaymentMethodElementWrapper<FormElement> {
                 form = wrapper.element
+            } else if
+                let wrapper = form as? ContainerElement,
+                let _form = wrapper.elements.first as? FormElement
+            {
+                form = _form
             }
 
             guard let form = form as? FormElement else {
@@ -1230,30 +1179,239 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         }
     }
 
-    func testShowsCardCheckbox() {
-        var configuration = PaymentSheet.Configuration()
-        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.card])
-        let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
-            configuration: .paymentSheet(configuration),
-            paymentMethod: .card
-        )
-        XCTAssertEqual(factory.saveMode, .userSelectable)
-    }
-
     func testEPSDoesntHideCardCheckbox() {
         var configuration = PaymentSheet.Configuration()
         configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.card, .EPS])
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card, .EPS]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card", "eps"]),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .card
+            paymentMethod: .stripe(.card)
         )
-        XCTAssertEqual(factory.saveMode, .userSelectable)
+
+        XCTAssert(factory.shouldDisplaySaveCheckbox)
     }
 
+    func testHidesCheckbox_PI_offSession() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card], setupFutureUsage: .offSession),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssert(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testHidesCheckbox_PI_onSession() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card], setupFutureUsage: .onSession),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssert(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_PI_notSettingUp_card() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        XCTAssertFalse(factory.isSettingUp)
+        XCTAssert(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testHidesCheckbox_PI_notSettingUp_card() {
+        let configuration = PaymentSheet.Configuration()
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssertFalse(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_PI_notSettingUp_usBankAccount() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card, .USBankAccount]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card", "us_bank_account"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.USBankAccount)
+        )
+
+        XCTAssertFalse(factory.isSettingUp)
+        XCTAssert(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testHidesCheckbox_PI_notSettingUp_usBankAccount() {
+        let configuration = PaymentSheet.Configuration()
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card, .USBankAccount]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card", "us_bank_account"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.USBankAccount)
+        )
+
+        XCTAssertFalse(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testHidesCheckbox_SI() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testSetupIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssert(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_PI_save_enabled() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"], customerSessionData: [
+                "mobile_payment_element": [
+                    "enabled": true,
+                    "features": ["payment_method_save": "enabled",
+                                 "payment_method_remove": "enabled",
+                                ],
+                ],
+                "customer_sheet": [
+                    "enabled": false,
+                ],
+            ]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssertFalse(factory.isSettingUp)
+        XCTAssertTrue(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_PISFU_save_enabled() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card],
+                                        setupFutureUsage: .offSession),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"],
+                                         customerSessionData: [
+                                            "mobile_payment_element": [
+                                                "enabled": true,
+                                                "features": ["payment_method_save": "enabled",
+                                                             "payment_method_remove": "enabled",
+                                                            ],
+                                            ],
+                                            "customer_sheet": [
+                                                "enabled": false,
+                                            ],
+                                         ]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssert(factory.isSettingUp)
+        XCTAssertTrue(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_PISFU_save_disabled() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card],
+                                        setupFutureUsage: .offSession),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"],
+                                         customerSessionData: [
+                                            "mobile_payment_element": [
+                                                "enabled": true,
+                                                "features": ["payment_method_save": "disabled",
+                                                             "payment_method_remove": "enabled",
+                                                            ],
+                                            ],
+                                            "customer_sheet": [
+                                                "enabled": false,
+                                            ],
+                                        ]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssert(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_SI_save_disabled() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testSetupIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"],
+                                         customerSessionData: [
+                                            "mobile_payment_element": [
+                                                "enabled": true,
+                                                "features": ["payment_method_save": "disabled",
+                                                             "payment_method_remove": "enabled",
+                                                            ],
+                                            ],
+                                            "customer_sheet": [
+                                                "enabled": false,
+                                            ],
+                                         ]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssertTrue(factory.isSettingUp)
+        XCTAssertFalse(factory.shouldDisplaySaveCheckbox)
+    }
+
+    func testShowsCheckbox_SI_save_enabled() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
+        let factory = PaymentSheetFormFactory(
+            intent: ._testSetupIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"],
+                                         customerSessionData: [
+                                            "mobile_payment_element": [
+                                                "enabled": true,
+                                                "features": ["payment_method_save": "enabled",
+                                                             "payment_method_remove": "enabled",
+                                                            ],
+                                            ],
+                                            "customer_sheet": [
+                                                "enabled": false,
+                                            ],
+                                         ]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+
+        XCTAssertTrue(factory.isSettingUp)
+        XCTAssertTrue(factory.shouldDisplaySaveCheckbox)
+    }
     func testBillingAddressSection() {
         let defaultAddress = PaymentSheet.Address(
             city: "San Francisco",
@@ -1266,7 +1424,6 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         var configuration = PaymentSheet.Configuration()
         configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
         configuration.defaultBillingDetails.address = defaultAddress
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.card])
         // An address section with defaults...
         let specProvider = AddressSpecProvider()
         specProvider.addressSpecs = [
@@ -1280,16 +1437,17 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             ),
         ]
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .card,
+            paymentMethod: .stripe(.card),
             addressSpecProvider: specProvider
         )
         let addressSection = factory.makeBillingAddressSection(countries: nil)
 
         // ...should update params
         let intentConfirmParams = addressSection.updateParams(
-            params: IntentConfirmParams(type: .card)
+            params: IntentConfirmParams(type: .stripe(.card))
         )
         guard let billingDetails = intentConfirmParams?.paymentMethodParams.billingDetails?.address
         else {
@@ -1312,7 +1470,6 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         configuration.shippingDetails = {
             return .init(address: .init(country: "US", line1: "Shipping line 1"), name: "Name")
         }
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.card])
         // An address section with both default billing and default shipping...
         let specProvider = AddressSpecProvider()
         specProvider.addressSpecs = [
@@ -1326,9 +1483,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             ),
         ]
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .card,
+            paymentMethod: .stripe(.card),
             addressSpecProvider: specProvider
         )
         let addressSection = factory.makeBillingAddressSection(countries: nil)
@@ -1338,43 +1496,24 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertTrue(addressSection.element.sameAsCheckbox.view.isHidden)
     }
 
-    func testApplyDefaults_Card_Applied() {
+    func testApplyDefaults() {
         let defaultAddress = PaymentSheet.Address(
             city: "San Francisco",
-            country: "US",
+            country: "CA",
             line1: "510 Townsend St.",
             line2: "Line 2",
             postalCode: "94102",
             state: "CA"
         )
         var configuration = PaymentSheet.Configuration()
-        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
         configuration.defaultBillingDetails.name = "Jane Doe"
         configuration.defaultBillingDetails.email = "foo@bar.com"
         configuration.defaultBillingDetails.phone = "+15555555555"
         configuration.defaultBillingDetails.address = defaultAddress
         configuration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.card])
-        // An address section with defaults...
-        let specProvider = AddressSpecProvider()
-        specProvider.addressSpecs = [
-            "US": AddressSpec(
-                format: "NOACSZ",
-                require: "ACSZ",
-                cityNameType: .city,
-                stateNameType: .state,
-                zip: "",
-                zipNameType: .zip
-            ),
-        ]
-        let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
-            configuration: .paymentSheet(configuration),
-            paymentMethod: .card,
-            addressSpecProvider: specProvider
-        )
-        let cardForm = factory.makeCard()
-        let params = cardForm.applyDefaults(params: IntentConfirmParams(type: .card))
+
+        let params = IntentConfirmParams(type: .stripe(.card))
+        params.setDefaultBillingDetailsIfNecessary(for: configuration)
 
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.name, "Jane Doe")
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.email, "foo@bar.com")
@@ -1383,115 +1522,256 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.line2, "Line 2")
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.city, "San Francisco")
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.state, "CA")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.country, "US")
+        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.country, "CA")
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.postalCode, "94102")
+
+        configuration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = false
+        let params2 = IntentConfirmParams(type: .stripe(.card))
+        params2.setDefaultBillingDetailsIfNecessary(for: configuration)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.name)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.email)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.phone)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.address?.line1)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.address?.line2)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.address?.city)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.address?.state)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.address?.country)
+        XCTAssertNil(params2.paymentMethodParams.nonnil_billingDetails.address?.postalCode)
     }
 
-    func testApplyDefaults_Card_NotApplied() {
-        let defaultAddress = PaymentSheet.Address(
-            city: "San Francisco",
-            country: "US",
-            line1: "510 Townsend St.",
-            line2: "Line 2",
-            postalCode: "94102",
-            state: "CA"
-        )
-        var configuration = PaymentSheet.Configuration()
-        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
-        configuration.defaultBillingDetails.name = "Jane Doe"
-        configuration.defaultBillingDetails.email = "foo@bar.com"
-        configuration.defaultBillingDetails.phone = "+15555555555"
-        configuration.defaultBillingDetails.address = defaultAddress
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.card])
-        // An address section with defaults...
-        let specProvider = AddressSpecProvider()
-        specProvider.addressSpecs = [
-            "US": AddressSpec(
-                format: "NOACSZ",
-                require: "ACSZ",
-                cityNameType: .city,
-                stateNameType: .state,
-                zip: "",
-                zipNameType: .zip
-            ),
-        ]
+    func testMissingFormSpec() {
+        let expectation = expectation(description: "Load specs")
+        FormSpecProvider.shared.load { _ in
+            expectation.fulfill()
+        }
+        waitForExpectations(timeout: 10)
+
+        var configuration = PaymentSheet.Configuration._testValue_MostPermissive()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "ek")
+        let analyticsClient = STPAnalyticsClient()
+
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.iDEAL, .card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["ideal", "card"]),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .card,
-            addressSpecProvider: specProvider
+            paymentMethod: .stripe(.cardPresent), // A payment method that doesn't have LUXE specs and in-code form definition
+            accountService: LinkAccountService._testValue(),
+            analyticsHelper: ._testValue(analyticsClient: analyticsClient)
         )
-        let formElement = factory.make()
-        let params = formElement.applyDefaults(params: IntentConfirmParams(type: .card))
-
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.name)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.email)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.phone)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.line1)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.line2)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.city)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.state)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.country)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.postalCode)
+        STPAssertTestUtil.shouldSuppressNextSTPAlert = true
+        _ = factory.make()
+        XCTAssertEqual(STPAssertTestUtil.lastAssertMessage, "Failed to get form spec for card_present!")
+        let errorAnalytic = analyticsClient._testLogHistory.first!
+        XCTAssertEqual(errorAnalytic["event"] as? String, STPAnalyticEvent.unexpectedPaymentSheetFormFactoryError.rawValue)
+        XCTAssertEqual(errorAnalytic["payment_method"] as? String, "card_present")
+        XCTAssertEqual(errorAnalytic["error_code"] as? String, "missingFormSpec")
     }
 
-    func testApplyDefaults_LPM_Applied() {
+    func testCardFormContainsMandateText() {
+        let expectation = expectation(description: "Load specs")
+        AddressSpecProvider.shared.loadAddressSpecs {
+            FormSpecProvider.shared.load { _ in
+                expectation.fulfill()
+            }
+        }
+        waitForExpectations(timeout: 1)
+
+        var configuration = PaymentSheet.Configuration._testValue_MostPermissive()
+        configuration.customer = .init(id: "id", ephemeralKeySecret: "ek")
+        let analyticsClient = STPAnalyticsClient()
+
+        func makeForm(intent: Intent) -> PaymentMethodElement {
+            return PaymentSheetFormFactory(
+                intent: intent,
+                elementsSession: ._testValue(intent: intent),
+                configuration: .paymentSheet(configuration),
+                paymentMethod: .stripe(.card),
+                accountService: LinkAccountService._testValue(),
+                analyticsHelper: ._testValue(analyticsClient: analyticsClient)
+            ).make()
+        }
+        let cardForm_pi = makeForm(intent: ._testPaymentIntent(paymentMethodTypes: [.card]))
+        XCTAssertTrue(cardForm_pi.getMandateElement() == nil)
+
+        let cardForm_pi_sfu = makeForm(intent: ._testPaymentIntent(paymentMethodTypes: [.card], setupFutureUsage: .offSession))
+        XCTAssertTrue(cardForm_pi_sfu.getMandateElement() != nil)
+
+        let cardForm_si = makeForm(intent: ._testSetupIntent(paymentMethodTypes: [.card]))
+        XCTAssertTrue(cardForm_si.getMandateElement() != nil)
+    }
+
+    // MARK: Instant Debits
+
+    func testMakeInstantDebits_configuration_automatic() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.billingDetailsCollectionConfiguration.name = .automatic
+        configuration.billingDetailsCollectionConfiguration.email = .automatic
+        configuration.billingDetailsCollectionConfiguration.phone = .automatic
+        configuration.billingDetailsCollectionConfiguration.address = .automatic
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        // All form elements should be nil except for email.
+        XCTAssertNil(instantDebitsSection.nameElement)
+        XCTAssertNotNil(instantDebitsSection.emailElement)
+        XCTAssertNil(instantDebitsSection.phoneElement)
+        XCTAssertNil(instantDebitsSection.addressElement)
+    }
+
+    func testMakeInstantDebits_configuration_alwaysOrFull() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.billingDetailsCollectionConfiguration.name = .always
+        configuration.billingDetailsCollectionConfiguration.email = .always
+        configuration.billingDetailsCollectionConfiguration.phone = .always
+        configuration.billingDetailsCollectionConfiguration.address = .full
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        // All form elements should not be nil.
+        XCTAssertNotNil(instantDebitsSection.nameElement)
+        XCTAssertNotNil(instantDebitsSection.emailElement)
+        XCTAssertNotNil(instantDebitsSection.phoneElement)
+        XCTAssertNotNil(instantDebitsSection.addressElement)
+    }
+
+    func testMakeInstantDebits_configuration_never() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.billingDetailsCollectionConfiguration.name = .never
+        configuration.billingDetailsCollectionConfiguration.email = .never
+        configuration.billingDetailsCollectionConfiguration.phone = .never
+        configuration.billingDetailsCollectionConfiguration.address = .never
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        // All form elements should be nil except for email.
+        // This is because a default email was not provided.
+        XCTAssertNil(instantDebitsSection.nameElement)
+        XCTAssertNotNil(instantDebitsSection.emailElement)
+        XCTAssertNil(instantDebitsSection.phoneElement)
+        XCTAssertNil(instantDebitsSection.addressElement)
+    }
+
+    func testMakeInstantDebits_configuration_never_withDefaultEmail() {
+        var configuration = PaymentSheet.Configuration()
+        configuration.billingDetailsCollectionConfiguration.name = .never
+        configuration.billingDetailsCollectionConfiguration.email = .never
+        configuration.billingDetailsCollectionConfiguration.phone = .never
+        configuration.billingDetailsCollectionConfiguration.address = .never
+
+        configuration.defaultBillingDetails.email = "foo@bar.com"
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        // All form elements should be nil.
+        XCTAssertNil(instantDebitsSection.nameElement)
+        XCTAssertNil(instantDebitsSection.emailElement)
+        XCTAssertNil(instantDebitsSection.phoneElement)
+        XCTAssertNil(instantDebitsSection.addressElement)
+    }
+
+    func testMakeInstantDebits_defaultValues_attachDefaultsOff() {
         let defaultAddress = PaymentSheet.Address(
             city: "San Francisco",
-            country: "US",
+            country: "CA",
             line1: "510 Townsend St.",
             line2: "Line 2",
             postalCode: "94102",
             state: "CA"
         )
+
         var configuration = PaymentSheet.Configuration()
-        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
-        configuration.defaultBillingDetails.name = "Jane Doe"
+        configuration.defaultBillingDetails.name = "Foo Bar"
         configuration.defaultBillingDetails.email = "foo@bar.com"
-        configuration.defaultBillingDetails.phone = "+15555555555"
+        configuration.defaultBillingDetails.phone = "+12345678900"
+        configuration.defaultBillingDetails.address = defaultAddress
+        configuration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = false
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        XCTAssertNil(instantDebitsSection.defaultName)
+        XCTAssertNil(instantDebitsSection.defaultEmail)
+        XCTAssertNil(instantDebitsSection.defaultPhone)
+        XCTAssertNil(instantDebitsSection.defaultAddress)
+    }
+
+    func testMakeInstantDebits_defaultValues_attachDefaultsOn() {
+        let defaultAddress = PaymentSheet.Address(
+            city: "San Francisco",
+            country: "CA",
+            line1: "510 Townsend St.",
+            line2: "Line 2",
+            postalCode: "94102",
+            state: "CA"
+        )
+
+        var configuration = PaymentSheet.Configuration()
+        configuration.defaultBillingDetails.name = "Foo Bar"
+        configuration.defaultBillingDetails.email = "foo@bar.com"
+        configuration.defaultBillingDetails.phone = "+12345678900"
         configuration.defaultBillingDetails.address = defaultAddress
         configuration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.afterpayClearpay])
-        // An address section with defaults...
-        let specProvider = AddressSpecProvider()
-        specProvider.addressSpecs = [
-            "US": AddressSpec(
-                format: "NOACSZ",
-                require: "ACSZ",
-                cityNameType: .city,
-                stateNameType: .state,
-                zip: "",
-                zipNameType: .zip
-            ),
-        ]
-
-        let expectation = expectation(description: "FormSpecs loaded")
-        FormSpecProvider.shared.load { _ in
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 5.0)
 
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("afterpay_clearpay"),
-            addressSpecProvider: specProvider
+            paymentMethod: .stripe(.card)
         )
-        let form = factory.make()
-        let params = form.applyDefaults(params: IntentConfirmParams(type: .dynamic("afterpay_clearpay")))
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
 
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.name, "Jane Doe")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.email, "foo@bar.com")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.phone, "+15555555555")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.line1, "510 Townsend St.")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.line2, "Line 2")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.city, "San Francisco")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.state, "CA")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.country, "US")
-        XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.address?.postalCode, "94102")
+        XCTAssertEqual(instantDebitsSection.name, "Foo Bar")
+        XCTAssertEqual(instantDebitsSection.defaultName, "Foo Bar")
+        XCTAssertEqual(instantDebitsSection.email, "foo@bar.com")
+        XCTAssertEqual(instantDebitsSection.defaultEmail, "foo@bar.com")
+        XCTAssertEqual(instantDebitsSection.phone, "+12345678900")
+        XCTAssertEqual(instantDebitsSection.defaultPhone, "+12345678900")
+        XCTAssertEqual(instantDebitsSection.address, defaultAddress)
+        XCTAssertEqual(instantDebitsSection.defaultAddress, defaultAddress)
     }
 
-    func testApplyDefaults_LPM_NotApplied() {
+    func testMakeInstantDebits_customValues() {
         let defaultAddress = PaymentSheet.Address(
             city: "San Francisco",
             country: "US",
@@ -1500,50 +1780,171 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             postalCode: "94102",
             state: "CA"
         )
-        var configuration = PaymentSheet.Configuration()
-        configuration.customer = .init(id: "id", ephemeralKeySecret: "sec")
-        configuration.defaultBillingDetails.name = "Jane Doe"
-        configuration.defaultBillingDetails.email = "foo@bar.com"
-        configuration.defaultBillingDetails.phone = "+15555555555"
-        configuration.defaultBillingDetails.address = defaultAddress
-        let paymentIntent = STPFixtures.makePaymentIntent(paymentMethodTypes: [.afterpayClearpay])
-        // An address section with defaults...
-        let specProvider = AddressSpecProvider()
-        specProvider.addressSpecs = [
-            "US": AddressSpec(
-                format: "NOACSZ",
-                require: "ACSZ",
-                cityNameType: .city,
-                stateNameType: .state,
-                zip: "",
-                zipNameType: .zip
-            ),
-        ]
 
-        let expectation = expectation(description: "FormSpecs loaded")
-        FormSpecProvider.shared.load { _ in
-            expectation.fulfill()
-        }
-        wait(for: [expectation], timeout: 5.0)
+        var configuration = PaymentSheet.Configuration()
+        configuration.billingDetailsCollectionConfiguration.name = .always
+        configuration.billingDetailsCollectionConfiguration.email = .always
+        configuration.billingDetailsCollectionConfiguration.phone = .always
+        configuration.billingDetailsCollectionConfiguration.address = .full
+        configuration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
+
+        configuration.defaultBillingDetails.name = "Foo Bar"
+        configuration.defaultBillingDetails.email = "foo@bar.com"
+        configuration.defaultBillingDetails.phone = "+12345678900"
+        configuration.defaultBillingDetails.address = defaultAddress
 
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(paymentIntent),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .dynamic("afterpay_clearpay"),
-            addressSpecProvider: specProvider
+            paymentMethod: .stripe(.card)
         )
-        let form = factory.make()
-        let params = form.applyDefaults(params: IntentConfirmParams(type: .dynamic("afterpay_clearpay")))
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
 
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.name)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.email)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.phone)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.line1)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.line2)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.city)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.state)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.country)
-        XCTAssertNil(params.paymentMethodParams.nonnil_billingDetails.address?.postalCode)
+        instantDebitsSection.nameElement?.setText("Bar Foo")
+        instantDebitsSection.emailElement?.setText("bar@foo.com")
+        instantDebitsSection.phoneElement?.textFieldElement.setText("+10987654321")
+
+        instantDebitsSection.addressElement?.city?.setText(defaultAddress.city!)
+        instantDebitsSection.addressElement?.country.select(index: 0) // "US"
+        instantDebitsSection.addressElement?.line1?.setText(defaultAddress.line1!)
+        instantDebitsSection.addressElement?.line2?.setText(defaultAddress.line2!)
+        instantDebitsSection.addressElement?.postalCode?.setText(defaultAddress.postalCode!)
+        instantDebitsSection.addressElement?.state?.setRawData(defaultAddress.state!)
+
+        XCTAssertEqual(instantDebitsSection.name, "Bar Foo")
+        XCTAssertEqual(instantDebitsSection.defaultName, "Foo Bar")
+        XCTAssertEqual(instantDebitsSection.email, "bar@foo.com")
+        XCTAssertEqual(instantDebitsSection.defaultEmail, "foo@bar.com")
+        XCTAssertEqual(instantDebitsSection.phone, "+110987654321")
+        XCTAssertEqual(instantDebitsSection.defaultPhone, "+12345678900")
+        XCTAssertEqual(instantDebitsSection.address, defaultAddress)
+        XCTAssertEqual(instantDebitsSection.defaultAddress, defaultAddress)
+    }
+
+    func testMakeInstantDebits_enableCta_automatic() {
+        var configuration = PaymentSheet.Configuration()
+        // Only email is required here.
+        configuration.billingDetailsCollectionConfiguration.name = .automatic
+        configuration.billingDetailsCollectionConfiguration.email = .automatic
+        configuration.billingDetailsCollectionConfiguration.phone = .automatic
+        configuration.billingDetailsCollectionConfiguration.address = .automatic
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        // No email
+        XCTAssertFalse(instantDebitsSection.enableCTA)
+
+        // Set an invalid email
+        instantDebitsSection.emailElement?.setText("gibberish")
+        XCTAssertFalse(instantDebitsSection.enableCTA)
+
+        // Set a valid email
+        instantDebitsSection.emailElement?.setText("foo@bar.com")
+        XCTAssertTrue(instantDebitsSection.enableCTA)
+    }
+
+    func testMakeInstantDebits_enableCta_alwaysOrFull() {
+        let defaultAddress = PaymentSheet.Address(
+            city: "San Francisco",
+            country: "US",
+            line1: "510 Townsend St.",
+            line2: "Line 2",
+            postalCode: "94102",
+            state: "CA"
+        )
+
+        var configuration = PaymentSheet.Configuration()
+        configuration.billingDetailsCollectionConfiguration.name = .always
+        configuration.billingDetailsCollectionConfiguration.email = .always
+        configuration.billingDetailsCollectionConfiguration.phone = .always
+        configuration.billingDetailsCollectionConfiguration.address = .full
+
+        let factory = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(configuration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let instantDebitsSection = factory.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        // No fields set
+        XCTAssertFalse(instantDebitsSection.enableCTA)
+
+        // Set a name
+        instantDebitsSection.nameElement?.setText("Foo Bar")
+        XCTAssertFalse(instantDebitsSection.enableCTA)
+
+        // Set a valid email
+        instantDebitsSection.emailElement?.setText("foo@bar.com")
+        XCTAssertFalse(instantDebitsSection.enableCTA)
+
+        // Set a phone number
+        instantDebitsSection.phoneElement?.textFieldElement.setText("+12345678900")
+        XCTAssertFalse(instantDebitsSection.enableCTA)
+
+        // Set a valid address
+        instantDebitsSection.addressElement?.city?.setText(defaultAddress.city!)
+        instantDebitsSection.addressElement?.country.select(index: 0) // "US"
+        instantDebitsSection.addressElement?.line1?.setText(defaultAddress.line1!)
+        instantDebitsSection.addressElement?.postalCode?.setText(defaultAddress.postalCode!)
+        instantDebitsSection.addressElement?.state?.setRawData(defaultAddress.state!)
+
+        // CTA will now be enabled
+        XCTAssertTrue(instantDebitsSection.enableCTA)
+    }
+
+    func testMakeInstantDebits_enableCta_never() {
+        var noDefaultsConfiguration = PaymentSheet.Configuration()
+        noDefaultsConfiguration.billingDetailsCollectionConfiguration.name = .never
+        noDefaultsConfiguration.billingDetailsCollectionConfiguration.email = .never
+        noDefaultsConfiguration.billingDetailsCollectionConfiguration.phone = .never
+        noDefaultsConfiguration.billingDetailsCollectionConfiguration.address = .never
+        noDefaultsConfiguration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
+
+        let noDefaultsFacotry = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(noDefaultsConfiguration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let noDefaultsInstantDebitsSection = noDefaultsFacotry.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        XCTAssertFalse(noDefaultsInstantDebitsSection.enableCTA)
+
+        var defaultEmailConfiguration = PaymentSheet.Configuration()
+        defaultEmailConfiguration.billingDetailsCollectionConfiguration.name = .never
+        defaultEmailConfiguration.billingDetailsCollectionConfiguration.email = .never
+        defaultEmailConfiguration.billingDetailsCollectionConfiguration.phone = .never
+        defaultEmailConfiguration.billingDetailsCollectionConfiguration.address = .never
+        defaultEmailConfiguration.billingDetailsCollectionConfiguration.attachDefaultsToPaymentMethod = true
+        defaultEmailConfiguration.defaultBillingDetails.email = "foo@bar.com"
+
+        let defaultEmailFacotry = PaymentSheetFormFactory(
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testValue(paymentMethodTypes: ["card"]),
+            configuration: .paymentSheet(defaultEmailConfiguration),
+            paymentMethod: .stripe(.card)
+        )
+        guard let defaultEmailInstantDebitsSection = defaultEmailFacotry.makeInstantDebits(countries: ["US"]) as? InstantDebitsPaymentMethodElement else {
+            return XCTFail("Expected InstantDebitsPaymentMethodElement from factory")
+        }
+
+        XCTAssertTrue(defaultEmailInstantDebitsSection.enableCTA)
     }
 
     // MARK: - Previous Customer Input tests
@@ -1606,14 +2007,15 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 card: cardValues,
                 billingDetails: billingDetails,
                 metadata: nil),
-            type: .card
+            type: .stripe(.card)
         )
 
         // ...the card form...
         let factory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent(paymentMethodTypes: ["card"])),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.card]),
+            elementsSession: ._testCardValue(),
             configuration: .paymentSheet(configuration),
-            paymentMethod: .card,
+            paymentMethod: .stripe(.card),
             previousCustomerInput: previousCustomerInput
         )
         let cardForm = factory.make()
@@ -1621,7 +2023,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         // ...should be valid...
         XCTAssert(cardForm.validationState == .valid)
         // ...and its params should match the defaults above
-        let params = cardForm.updateParams(params: IntentConfirmParams(type: .card))!
+        let params = cardForm.updateParams(params: IntentConfirmParams(type: .stripe(.card)))!
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.name, "Jane Doe")
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.email, "foo@bar.com")
         XCTAssertEqual(params.paymentMethodParams.nonnil_billingDetails.phone, "+15555555555")
@@ -1636,8 +2038,8 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         XCTAssertEqual(params.paymentMethodParams.card?.expMonth, cardValues.expMonth)
         XCTAssertEqual(params.paymentMethodParams.card?.expYear, cardValues.expYear)
         XCTAssertEqual(params.paymentMethodParams.card?.cvc, cardValues.cvc)
-        // ...and the checkbox state should be enabled (the default)
-        XCTAssertEqual(params.saveForFutureUseCheckboxState, .selected)
+        // ...and the checkbox state should be disabled (the default)
+        XCTAssertEqual(params.saveForFutureUseCheckboxState, .deselected)
     }
 
     func testAppliesPreviousCustomerInput_checkbox() {
@@ -1653,9 +2055,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             var configuration = PaymentSheet.Configuration._testValue_MostPermissive()
             configuration.customer = .init(id: "id", ephemeralKeySecret: "ek")
             return PaymentSheetFormFactory(
-                intent: isSettingUp ? .setupIntent(STPFixtures.setupIntent()) : .paymentIntent(STPFixtures.paymentIntent()),
+                intent: isSettingUp ? ._testSetupIntent() : ._testValue(),
+                elementsSession: ._testCardValue(),
                 configuration: .paymentSheet(configuration),
-                paymentMethod: .card,
+                paymentMethod: .stripe(.card),
                 previousCustomerInput: previousCustomerInput
             ).make()
         }
@@ -1665,28 +2068,29 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 card: STPFixtures.paymentMethodCardParams(),
                 billingDetails: STPFixtures.paymentMethodBillingDetails(),
                 metadata: nil),
-            type: .card
+            type: .stripe(.card)
         )
         let cardForm_setup = makeCardForm(isSettingUp: true, previousCustomerInput: previousCustomerInput)
+        sendEventToSubviews(.viewDidAppear, from: cardForm_setup.view) // Simulate view appearance. This makes SimpleMandateElement mark its mandate as having been displayed.
         // ...should have the checkbox hidden
-        let cardForm_setup_params = cardForm_setup.updateParams(params: .init(type: .card))
+        let cardForm_setup_params = cardForm_setup.updateParams(params: .init(type: .stripe(.card)))
         XCTAssertEqual(cardForm_setup_params?.saveForFutureUseCheckboxState, .hidden)
 
         // Making another card form for payment using the previous card form's input...
         let cardForm_payment = makeCardForm(isSettingUp: false, previousCustomerInput: cardForm_setup_params)
-        // ...should have the checkbox selected (the default)
-        let cardForm_payment_params = cardForm_payment.updateParams(params: .init(type: .card))
-        XCTAssertEqual(cardForm_payment_params?.saveForFutureUseCheckboxState, .selected)
+        // ...should have the checkbox deselected (the default)
+        let cardForm_payment_params = cardForm_payment.updateParams(params: .init(type: .stripe(.card)))
+        XCTAssertEqual(cardForm_payment_params?.saveForFutureUseCheckboxState, .deselected)
 
         // Deselecting the checkbox...
         let saveCheckbox = cardForm_payment.getAllUnwrappedSubElements().compactMap({ $0 as? CheckboxElement }).first(where: { $0.label.hasPrefix("Save") })
         saveCheckbox?.isSelected = false
-        let cardForm_payment_params_checkbox_deselected = cardForm_payment.updateParams(params: .init(type: .card))
+        let cardForm_payment_params_checkbox_deselected = cardForm_payment.updateParams(params: .init(type: .stripe(.card)))
         XCTAssertEqual(cardForm_payment_params_checkbox_deselected?.saveForFutureUseCheckboxState, .deselected)
         // ...and making another card form...
         let cardForm_payment_2 = makeCardForm(isSettingUp: false, previousCustomerInput: cardForm_payment_params_checkbox_deselected)
         // ...should have the checkbox deselected, preserving the previous customer input
-        let cardForm_payment_2_params = cardForm_payment_2.updateParams(params: .init(type: .card))
+        let cardForm_payment_2_params = cardForm_payment_2.updateParams(params: .init(type: .stripe(.card)))
         XCTAssertEqual(cardForm_payment_2_params?.saveForFutureUseCheckboxState, .deselected)
 
     }
@@ -1716,14 +2120,15 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         // ...for Afterpay...
         let previousAfterpayCustomerInput = IntentConfirmParams.init(
             params: .paramsWith(afterpayClearpay: .init(), billingDetails: billingDetails, metadata: nil),
-            type: .dynamic("afterpay_clearpay")
+            type: .stripe(.afterpayClearpay)
         )
 
         // ...the Afterpay form should be valid
         let afterpayFactory = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent(paymentMethodTypes: ["afterpay_clearpay"])),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.afterpayClearpay]),
+            elementsSession: ._testValue(paymentMethodTypes: ["afterpay_clearpay"]),
             configuration: .paymentSheet(PaymentSheet.Configuration._testValue_MostPermissive()),
-            paymentMethod: .dynamic("afterpay_clearpay"),
+            paymentMethod: .stripe(.afterpayClearpay),
             previousCustomerInput: previousAfterpayCustomerInput
         )
         let afterpayForm = afterpayFactory.make()
@@ -1735,13 +2140,14 @@ class PaymentSheetFormFactoryTest: XCTestCase {
                 card: STPFixtures.paymentMethodCardParams(),
                 billingDetails: billingDetails,
                 metadata: nil),
-            type: .card
+            type: .stripe(.card)
         )
         // ...the Afterpay form should be blank and invalid, even though the previous input had full billing details
         let afterpayFormWithPreviousCardInput = PaymentSheetFormFactory(
-            intent: .paymentIntent(STPFixtures.paymentIntent(paymentMethodTypes: ["afterpay_clearpay"])),
+            intent: ._testPaymentIntent(paymentMethodTypes: [.afterpayClearpay]),
+            elementsSession: ._testValue(paymentMethodTypes: ["afterpay_clearpay"]),
             configuration: .paymentSheet(PaymentSheet.Configuration._testValue_MostPermissive()),
-            paymentMethod: .dynamic("afterpay_clearpay"),
+            paymentMethod: .stripe(.afterpayClearpay),
             previousCustomerInput: previousCardCustomerInput
         ).make()
         XCTAssert(afterpayFormWithPreviousCardInput.validationState != .valid)
@@ -1760,9 +2166,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
     func testAppliesPreviousCustomerInput_klarna_country() {
         func makeKlarnaCountry(apiPath: String?, previousCustomerInput: IntentConfirmParams?) -> PaymentMethodElementWrapper<DropdownFieldElement> {
             let factory = PaymentSheetFormFactory(
-                intent: .paymentIntent(STPFixtures.paymentIntent(paymentMethodTypes: ["klarna"], currency: "eur")),
+                intent: ._testPaymentIntent(paymentMethodTypes: [.klarna], currency: "eur"),
+                elementsSession: ._testValue(paymentMethodTypes: ["klarna"]),
                 configuration: .paymentSheet(PaymentSheet.Configuration._testValue_MostPermissive()),
-                paymentMethod: .dynamic("klarna"),
+                paymentMethod: .stripe(.klarna),
                 previousCustomerInput: previousCustomerInput
             )
             return factory.makeKlarnaCountry(apiPath: apiPath) as! PaymentMethodElementWrapper<DropdownFieldElement>
@@ -1774,7 +2181,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
             // ...with a selection *different* from the default of 0
             klarnaCountry.element.select(index: 1)
             // ...using its params as previous customer input to create a new klarna country...
-            let previousCustomerInput = klarnaCountry.updateParams(params: IntentConfirmParams(type: .dynamic("klarna")))
+            let previousCustomerInput = klarnaCountry.updateParams(params: IntentConfirmParams(type: .stripe(.klarna)))
             let klarnaCountry_with_previous_customer_input = makeKlarnaCountry(apiPath: apiPath, previousCustomerInput: previousCustomerInput)
             // ...should result in a valid element filled out with the previous customer input
             XCTAssertEqual(klarnaCountry_with_previous_customer_input.element.selectedIndex, 1)
@@ -1794,9 +2201,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         // Use PayPal as an example PM, since it is an empty form w/ a mandate iff PI+SFU or SI
         func makePaypalForm(isSettingUp: Bool, previousCustomerInput: IntentConfirmParams?) -> PaymentMethodElement {
             return PaymentSheetFormFactory(
-                intent: .paymentIntent(STPFixtures.paymentIntent(paymentMethodTypes: ["paypal"], setupFutureUsage: isSettingUp ? .offSession : .none)),
+                intent: ._testPaymentIntent(paymentMethodTypes: [.payPal], setupFutureUsage: isSettingUp ? .offSession : .none),
+                elementsSession: ._testValue(paymentMethodTypes: ["paypal"]),
                 configuration: .paymentSheet(PaymentSheet.Configuration._testValue_MostPermissive()),
-                paymentMethod: .dynamic("paypal"),
+                paymentMethod: .stripe(.payPal),
                 previousCustomerInput: previousCustomerInput
             ).make()
         }
@@ -1805,7 +2213,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         // A paypal form for *payment* without previous customer input...
         let paypalForm_payment = makePaypalForm(isSettingUp: false, previousCustomerInput: nil)
         // ...should be valid - it requires no customer input.
-        guard let paypalForm_payment_paymentOption = paypalForm_payment.updateParams(params: IntentConfirmParams(type: .dynamic("paypal"))) else {
+        guard let paypalForm_payment_paymentOption = paypalForm_payment.updateParams(params: IntentConfirmParams(type: .stripe(.payPal))) else {
             XCTFail("payment option should be non-nil")
             return
         }
@@ -1815,10 +2223,10 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         // Creating a paypal form for *setup* using the old form as previous customer input...
         var paypalForm_setup = makePaypalForm(isSettingUp: true, previousCustomerInput: paypalForm_payment_paymentOption)
         // ...should not be valid...
-        XCTAssertNil(paypalForm_setup.updateParams(params: IntentConfirmParams(type: .dynamic("paypal"))))
+        XCTAssertNil(paypalForm_setup.updateParams(params: IntentConfirmParams(type: .stripe(.payPal))))
         // ...until the customer has seen the mandate...
         sendEventToSubviews(.viewDidAppear, from: paypalForm_setup.view)
-        guard let paypalForm_setup_paymentOption = paypalForm_setup.updateParams(params: IntentConfirmParams(type: .dynamic("paypal"))) else {
+        guard let paypalForm_setup_paymentOption = paypalForm_setup.updateParams(params: IntentConfirmParams(type: .stripe(.payPal))) else {
             XCTFail("payment option should be non-nil")
             return
         }
@@ -1828,7 +2236,7 @@ class PaymentSheetFormFactoryTest: XCTestCase {
         // Using the form's previous customer input to create another *setup* paypal form...
         paypalForm_setup = makePaypalForm(isSettingUp: true, previousCustomerInput: paypalForm_setup_paymentOption)
         // ...should be valid...
-        guard let paypalForm_setup_paymentOption = paypalForm_setup.updateParams(params: IntentConfirmParams(type: .dynamic("paypal"))) else {
+        guard let paypalForm_setup_paymentOption = paypalForm_setup.updateParams(params: IntentConfirmParams(type: .stripe(.payPal))) else {
             XCTFail("payment option should be non-nil")
             return
         }

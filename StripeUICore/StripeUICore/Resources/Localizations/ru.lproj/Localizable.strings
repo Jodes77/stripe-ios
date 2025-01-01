@@ -10,11 +10,17 @@
 
 "Area" = "Область";
 
+"BLIK code" = "Код BLIK";
+
 "BSB number" = "Номер BSB";
+
+"Bank account •••• %@" = "Банковский счет ••••%@";
 
 "Billing address is same as shipping" = "Адрес выставления счетов такой же, как адрес доставки";
 
 "Cancel" = "Отмена";
+
+"Card brand" = "Бренд карты";
 
 "City" = "Город";
 
@@ -37,6 +43,8 @@
 "District" = "Район";
 
 "Do Si" = "Do Si";
+
+"Do you want to close this form?" = "Закрыть форму?";
 
 "Done" = "Готово";
 
@@ -76,7 +84,7 @@
 
 "Parish" = "Приход";
 
-"Phone" = "Телефон";
+"Phone number" = "Номер телефона";
 
 "Postal code" = "Почтовый индекс";
 
@@ -86,11 +94,15 @@
 
 "Remove" = "Удалить";
 
-"Remove bank account" = "Удалить банковский счет";
+"Remove bank account?" = "Удалить банковский счет?";
 
-"Remove bank account ending in %@" = "Удалить банковский счет, оканчивающийся на %@";
+"Remove card" = "Удалить карту";
 
 "Search" = "Поиск";
+
+"Select card brand (optional)" = "Выберите бренд карты (необязательно)";
+
+"Sort code" = "Код банка";
 
 "State" = "Штат";
 
@@ -104,6 +116,8 @@
 
 "The account number you entered is incomplete." = "Номер счета введен не полностью.";
 
+"The sort code you entered is invalid." = "Введенный код сортировки неверен.";
+
 "Town or city" = "Город";
 
 "UPI ID" = "Идентификатор UPI";
@@ -112,9 +126,15 @@
 
 "Use rotor to access links" = "Используйте ротор для доступа к ссылкам";
 
+"Your BLIK code is incomplete." = "Ваш код BLIK неполный.";
+
+"Your BLIK code is invalid." = "Ваш код BLIK недействителен.";
+
 "Your ZIP is incomplete." = "Почтовый индекс введен не полностью.";
 
 "Your email is invalid." = "Недействительный адрес эл. почты.";
+
+"Your payment information will not be saved." = "Ваши платежные реквизиты не будут сохранены.";
 
 "Your postal code is incomplete." = "Введенный почтовый индекс неполон.";
 

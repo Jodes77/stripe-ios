@@ -77,8 +77,8 @@ import Foundation
 
     // MARK: - Phone number
 
-    static var phone: String {
-        STPLocalizedString("Phone", "Caption for Phone field on address form")
+    static var phoneNumber: String {
+        STPLocalizedString("Phone number", "Caption for Phone number field on address form")
     }
 
     static var incomplete_phone_number: String {
@@ -240,15 +240,25 @@ import Foundation
             "Error string displayed to user when they have entered an incomplete BSB number.")
     }
 
-    static var removeBankAccountEndingIn: String {
+    static var invalidSortCodeEntered: String {
         STPLocalizedString(
-            "Remove bank account ending in %@",
-            "Content for alert popup prompting to confirm removing a saved bank account. e.g. 'Remove bank account ending in 4242'")
+            "The sort code you entered is invalid.",
+            "Error string displayed to user when they have entered an invalid 'sort code' (a bank routing number used in the UK and Ireland)")
+    }
+
+    static var incompleteAccountNumber: String {
+        STPLocalizedString("The account number you entered is incomplete.", "Error description for incomplete account number")
+    }
+
+    static var bank_account_xxxx: String {
+        STPLocalizedString(
+            "Bank account •••• %@",
+            "Content for alert popup prompting to confirm removing a saved bank account. e.g. 'Bank account •••• 4242'")
     }
 
     static var removeBankAccount: String {
         STPLocalizedString(
-            "Remove bank account",
+            "Remove bank account?",
             "Title for confirmation alert to remove a saved bank account payment method")
     }
 
@@ -294,6 +304,13 @@ import Foundation
         )
     }
 
+    static var edit: String {
+        STPLocalizedString(
+            "Edit",
+            "Button title to enter editing mode"
+        )
+    }
+
     // MARK: - UPI
 
     static var upi_id: String {
@@ -316,5 +333,19 @@ import Foundation
 
     static var invalid_blik_code: String {
         STPLocalizedString("Your BLIK code is invalid.", "Error message when BLIK code is invalid")
+    }
+
+    // MARK: - Card brand choice
+
+    static var card_brand_dropdown_placeholder: String {
+        STPLocalizedString("Select card brand (optional)", "Message when a user is selecting a card brand in a dropdown")
+    }
+
+    static var card_brand: String {
+        STPLocalizedString("Card brand", "Label an input field to update card brand")
+    }
+
+    static var remove_card: String {
+        STPLocalizedString("Remove card", "Label on a button for removing a card")
     }
 }

@@ -7,6 +7,7 @@
 //
 
 import iOSSnapshotTestCase
+import StripeCoreTestUtils
 @_spi(STP) import StripeUICore
 
 @testable@_spi(STP) import Stripe
@@ -15,12 +16,7 @@ import iOSSnapshotTestCase
 @testable@_spi(STP) import StripePaymentSheet
 @testable@_spi(STP) import StripePaymentsUI
 
-class CircularButtonSnapshotTests: FBSnapshotTestCase {
-
-    override func setUp() {
-        super.setUp()
-        //        recordMode = true
-    }
+class CircularButtonSnapshotTests: STPSnapshotTestCase {
 
     func testNormal() {
         let button = CircularButton(style: .close)
@@ -41,6 +37,7 @@ class CircularButtonSnapshotTests: FBSnapshotTestCase {
     ) {
         // Ensures that the button shadow gets captured
         let wrapper = UIView()
+        wrapper.translatesAutoresizingMaskIntoConstraints = false
         wrapper.addAndPinSubview(
             button,
             insets: .insets(top: 10, leading: 10, bottom: 10, trailing: 10)
@@ -50,8 +47,13 @@ class CircularButtonSnapshotTests: FBSnapshotTestCase {
         let window = UIWindow()
         window.addSubview(wrapper)
 
-        let size = wrapper.systemLayoutSizeFitting(UIView.layoutFittingCompressedSize)
-        wrapper.bounds = CGRect(origin: .zero, size: size)
+        // Give the wrapper some constraints so that it has something to anchor to
+        NSLayoutConstraint.activate([
+            wrapper.heightAnchor.constraint(equalToConstant: 40),
+            wrapper.widthAnchor.constraint(equalToConstant: 40),
+            wrapper.topAnchor.constraint(equalTo: window.topAnchor),
+            wrapper.leftAnchor.constraint(equalTo: window.leftAnchor),
+        ])
 
         // Test light mode
         wrapper.overrideUserInterfaceStyle = .light

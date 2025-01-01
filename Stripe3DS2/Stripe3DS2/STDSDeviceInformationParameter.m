@@ -13,6 +13,7 @@
 
 #import "STDSIPAddress.h"
 #import "STDSSynchronousLocationManager.h"
+#import "STDSVisionSupport.h"
 
 NS_ASSUME_NONNULL_BEGIN
 
@@ -109,7 +110,7 @@ static const NSString * const kParameterNilCode = @"RE04";
                           [STDSDeviceInformationParameter OSVersion],
                           [STDSDeviceInformationParameter locale],
                           [STDSDeviceInformationParameter timeZone],
-                          [STDSDeviceInformationParameter advertisingID],
+                          [STDSDeviceInformationParameter dateTime],
                           [STDSDeviceInformationParameter screenResolution],
                           [STDSDeviceInformationParameter deviceName],
                           [STDSDeviceInformationParameter IPAddress],
@@ -136,6 +137,7 @@ static const NSString * const kParameterNilCode = @"RE04";
                           [STDSDeviceInformationParameter preferredLanguages],
                           [STDSDeviceInformationParameter defaultTimeZone],
                           [STDSDeviceInformationParameter appStoreReciptURL],
+                          [STDSDeviceInformationParameter appStoreReceiptExists],
                           ];
 
 
@@ -195,17 +197,15 @@ static const NSString * const kParameterNilCode = @"RE04";
     return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"C006"
                                                       permissionCheck:nil
                                                            valueCheck:^id _Nullable{
-                                                               return [NSTimeZone localTimeZone].name;
-                                                           }];
-}
-
-+ (instancetype)advertisingID {
-    return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"C007"
-                                                      permissionCheck:nil
-                                                           valueCheck:^id _Nullable{
-                                                               // Actually collecting advertisingIdentifier would require our users to tell Apple they're using it during app submission.
-                                                               // advertisingIdentifier returns all zeros when the user has limited ad tracking.
-                                                               return @"00000000-0000-0000-0000-000000000000";
+                                                                NSTimeZone *localTimeZone = [NSTimeZone localTimeZone];
+                                                                NSInteger secondsFromGMT = [localTimeZone secondsFromGMT];
+                                                                
+                                                                // Convert the offset to minutes
+                                                                NSInteger minutesFromGMT = secondsFromGMT / 60;
+                                                               
+                                                                NSString *utcOffsetString = [NSString stringWithFormat:@"%ld", (long)minutesFromGMT];
+                                                                
+                                                                return utcOffsetString;
                                                            }];
 }
 
@@ -213,7 +213,12 @@ static const NSString * const kParameterNilCode = @"RE04";
     return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"C008"
                                                       permissionCheck:nil
                                                            valueCheck:^id _Nullable{
-                                                               CGRect boundsInPixels = [UIScreen mainScreen].nativeBounds;
+#if STP_TARGET_VISION
+        // Offer something reasonable
+        CGRect boundsInPixels = CGRectMake(0, 0, 512, 342);
+#else
+        CGRect boundsInPixels = [UIScreen mainScreen].nativeBounds;
+#endif
                                                                return [NSString stringWithFormat:@"%ldx%ld", (long)boundsInPixels.size.width, (long)boundsInPixels.size.height];
 
                                                            }];
@@ -301,6 +306,30 @@ static const NSString * const kParameterNilCode = @"RE04";
                                                            }];
 }
 
+
+
++ (instancetype)dateTime {
+    return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"C017"
+                                                      permissionCheck:nil
+                                                           valueCheck:^id _Nullable{
+                                                                NSDate *currentDate = [NSDate date];
+                                                                
+                                                                // Create a date formatter
+                                                                NSDateFormatter *dateFormatter = [[NSDateFormatter alloc] init];
+                                                                
+                                                                // Set the time zone to UTC
+                                                                [dateFormatter setTimeZone:[NSTimeZone timeZoneWithAbbreviation:@"UTC"]];
+                                                                
+                                                                // Set the desired date format: YYYYMMDDHHMMSS
+                                                                [dateFormatter setDateFormat:@"yyyyMMddHHmmss"];
+                                                                
+                                                                // Convert the current date to the formatted string
+                                                                NSString *utcDateString = [dateFormatter stringFromDate:currentDate];
+                                                                
+                                                                return utcDateString;
+                                                           }];
+}
+
 + (instancetype)identiferForVendor {
     return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"I001"
                                                       permissionCheck:nil
@@ -317,7 +346,21 @@ static const NSString * const kParameterNilCode = @"RE04";
     return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"I002"
                                                       permissionCheck:nil
                                                            valueCheck:^id _Nullable{
-                                                               return @([UIDevice currentDevice].userInterfaceIdiom).stringValue;
+                                                                switch ([UIDevice currentDevice].userInterfaceIdiom) {
+                                                                    case UIUserInterfaceIdiomUnspecified:
+                                                                    case UIUserInterfaceIdiomVision:
+                                                                        return @"Unspecified";
+                                                                    case UIUserInterfaceIdiomPhone:
+                                                                        return @"iPhone";
+                                                                    case UIUserInterfaceIdiomPad:
+                                                                        return @"iPad";
+                                                                    case UIUserInterfaceIdiomTV:
+                                                                        return @"TV";
+                                                                    case UIUserInterfaceIdiomCarPlay:
+                                                                        return @"carPlay";
+                                                                    case UIUserInterfaceIdiomMac:
+                                                                        return @"Mac";
+                                                                }
                                                            }];
 }
 
@@ -385,7 +428,14 @@ static const NSString * const kParameterNilCode = @"RE04";
     return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"I010"
                                                       permissionCheck:nil
                                                            valueCheck:^id _Nullable{
-                                                               return [NSLocale currentLocale].localeIdentifier;
+                                                                NSLocale *locale = [NSLocale systemLocale];
+                                                                NSString *language = locale.languageCode;
+                                                                NSString *country = locale.countryCode;
+                                                                if (language != nil && country != nil) {
+                                                                    return [@[language, country] componentsJoinedByString:@"-"];
+                                                                } else {
+                                                                    return nil;
+                                                                }
                                                            }];
 }
 
@@ -409,7 +459,15 @@ static const NSString * const kParameterNilCode = @"RE04";
     return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"I013"
                                                       permissionCheck:nil
                                                            valueCheck:^id _Nullable{
-                                                               return [NSTimeZone defaultTimeZone].name;
+                                                            NSTimeZone *defaultTimeZone = [NSTimeZone defaultTimeZone];
+                                                            NSInteger secondsFromGMT = [defaultTimeZone secondsFromGMT];
+                                                            
+                                                            // Convert the offset to minutes
+                                                            NSInteger minutesFromGMT = secondsFromGMT / 60;
+                                                           
+                                                            NSString *utcOffsetString = [NSString stringWithFormat:@"%ld", (long)minutesFromGMT];
+                                                            
+                                                            return utcOffsetString;
                                                            }];
 }
 
@@ -422,6 +480,26 @@ static const NSString * const kParameterNilCode = @"RE04";
                                                                     return appStoreReceiptURL;
                                                                 }
                                                                 return kParameterNilCode;
+                                                           }];
+}
+
++ (instancetype)appStoreReceiptExists {
+    return [[STDSDeviceInformationParameter alloc] initWithIdentifier:@"I015"
+                                                      permissionCheck:nil
+                                                           valueCheck:^id _Nullable {
+                                                                // Get the receipt file URL from the app's bundle
+                                                                NSURL *receiptURL = [[NSBundle mainBundle] appStoreReceiptURL];
+                                                                
+                                                                // Check if the file exists and is non-empty
+                                                                BOOL fileExists = [[NSFileManager defaultManager] fileExistsAtPath:[receiptURL path]];
+                                                                BOOL isFileNonEmpty = [[[NSFileManager defaultManager] attributesOfItemAtPath:[receiptURL path] error:nil] fileSize] > 0;
+                                                                
+                                                                // Return "true" if the receipt file exists and is non-empty, otherwise "false"
+                                                                if (fileExists && isFileNonEmpty) {
+                                                                    return @"true";
+                                                                } else {
+                                                                    return @"false";
+                                                                }
                                                            }];
 }
 

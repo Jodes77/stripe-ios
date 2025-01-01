@@ -36,6 +36,11 @@ import UIKit
     var defaultValue: String? { get }
 
     /**
+      - Note: If false, this textfield is disabled, defaults to true.
+     */
+    var isEditable: Bool { get }
+
+    /**
      Validate the text.
      
      - Parameter isOptional: Whether or not the text field's value is optional.
@@ -70,12 +75,12 @@ import UIKit
      This could be the logo of a network, a bank, etc.
      - Returns: a view.
      */
-    func accessoryView(for text: String, theme: ElementsUITheme) -> UIView?
+    func accessoryView(for text: String, theme: ElementsAppearance) -> UIView?
 
     /**
      Convenience method that creates a TextFieldElement using this Configuration
     */
-    func makeElement(theme: ElementsUITheme) -> TextFieldElement
+    func makeElement(theme: ElementsAppearance) -> TextFieldElement
 }
 
 // MARK: - Default implementation
@@ -102,6 +107,10 @@ public extension TextFieldElementConfiguration {
         return false
     }
 
+    var isEditable: Bool {
+        return true
+    }
+
     func makeDisplayText(for text: String) -> NSAttributedString {
         return NSAttributedString(string: text)
     }
@@ -125,11 +134,11 @@ public extension TextFieldElementConfiguration {
         return .max
     }
 
-    func accessoryView(for text: String, theme: ElementsUITheme) -> UIView? {
+    func accessoryView(for text: String, theme: ElementsAppearance) -> UIView? {
         return nil
     }
 
-    func makeElement(theme: ElementsUITheme) -> TextFieldElement {
+    func makeElement(theme: ElementsAppearance) -> TextFieldElement {
         return TextFieldElement(configuration: self, theme: theme)
     }
 }

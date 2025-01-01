@@ -9,34 +9,37 @@ import Foundation
 @_spi(STP) import StripeCore
 
 protocol NetworkingSaveToLinkVerificationDataSource: AnyObject {
+    var manifest: FinancialConnectionsSessionManifest { get }
     var consumerSession: ConsumerSessionData { get }
     var analyticsClient: FinancialConnectionsAnalyticsClient { get }
     var networkingOTPDataSource: NetworkingOTPDataSource { get }
 
     func startVerificationSession() -> Future<ConsumerSessionResponse>
-    func confirmVerificationSession(otpCode: String) -> Future<ConsumerSessionResponse>
     func markLinkVerified() -> Future<FinancialConnectionsSessionManifest>
-    func saveToLink() -> Future<Void>
+    func saveToLink() -> Future<String?>
 }
 
 final class NetworkingSaveToLinkVerificationDataSourceImplementation: NetworkingSaveToLinkVerificationDataSource {
 
+    let manifest: FinancialConnectionsSessionManifest
     private(set) var consumerSession: ConsumerSessionData
-    private let selectedAccountId: String
+    private let selectedAccounts: [FinancialConnectionsPartnerAccount]?
     private let apiClient: FinancialConnectionsAPIClient
     private let clientSecret: String
     let analyticsClient: FinancialConnectionsAnalyticsClient
     let networkingOTPDataSource: NetworkingOTPDataSource
 
     init(
+        manifest: FinancialConnectionsSessionManifest,
         consumerSession: ConsumerSessionData,
-        selectedAccountId: String,
+        selectedAccounts: [FinancialConnectionsPartnerAccount]?,
         apiClient: FinancialConnectionsAPIClient,
         clientSecret: String,
         analyticsClient: FinancialConnectionsAnalyticsClient
     ) {
+        self.manifest = manifest
         self.consumerSession = consumerSession
-        self.selectedAccountId = selectedAccountId
+        self.selectedAccounts = selectedAccounts
         self.apiClient = apiClient
         self.clientSecret = clientSecret
         self.analyticsClient = analyticsClient
@@ -49,7 +52,9 @@ final class NetworkingSaveToLinkVerificationDataSourceImplementation: Networking
             consumerSession: consumerSession,
             apiClient: apiClient,
             clientSecret: clientSecret,
-            analyticsClient: analyticsClient
+            analyticsClient: analyticsClient,
+            isTestMode: manifest.isTestMode,
+            theme: manifest.theme
         )
         self.networkingOTPDataSource = networkingOTPDataSource
         networkingOTPDataSource.delegate = self
@@ -79,29 +84,22 @@ final class NetworkingSaveToLinkVerificationDataSourceImplementation: Networking
             }
     }
 
-    func confirmVerificationSession(otpCode: String) -> Future<ConsumerSessionResponse> {
-        return apiClient.consumerSessionConfirmVerification(
-            otpCode: otpCode,
-            otpType: "SMS",
-            consumerSessionClientSecret: consumerSession.clientSecret
-        )
-    }
-
     func markLinkVerified() -> Future<FinancialConnectionsSessionManifest> {
         return apiClient.markLinkVerified(clientSecret: clientSecret)
     }
 
-    func saveToLink() -> Future<Void> {
-        return apiClient.saveAccountsToLink(
+    func saveToLink() -> Future<String?> {
+        return apiClient.saveAccountsToNetworkAndLink(
+            shouldPollAccounts: !manifest.shouldAttachLinkedPaymentMethod,
+            selectedAccounts: selectedAccounts,
             emailAddress: nil,
             phoneNumber: nil,
             country: nil,
-            selectedAccountIds: [selectedAccountId],
             consumerSessionClientSecret: consumerSession.clientSecret,
             clientSecret: clientSecret
         )
-        .chained { _ in
-            return Promise(value: ())
+        .chained { (_, customSuccessPaneMessage) in
+            return Promise(value: customSuccessPaneMessage)
         }
     }
 }

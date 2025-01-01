@@ -18,9 +18,10 @@ protocol AccountPickerSelectionListViewDelegate: AnyObject {
 
 final class AccountPickerSelectionListView: UIView {
 
-    private let selectionType: AccountPickerSelectionRowView.SelectionType
+    private let selectionType: AccountPickerSelectionType
     private let enabledAccounts: [FinancialConnectionsPartnerAccount]
     private let disabledAccounts: [FinancialConnectionsPartnerAccount]
+    private let theme: FinancialConnectionsTheme
     weak var delegate: AccountPickerSelectionListViewDelegate?
 
     private lazy var verticalStackView: UIStackView = {
@@ -31,13 +32,15 @@ final class AccountPickerSelectionListView: UIView {
     }()
 
     init(
-        selectionType: AccountPickerSelectionRowView.SelectionType,
+        selectionType: AccountPickerSelectionType,
         enabledAccounts: [FinancialConnectionsPartnerAccount],
-        disabledAccounts: [FinancialConnectionsPartnerAccount]
+        disabledAccounts: [FinancialConnectionsPartnerAccount],
+        theme: FinancialConnectionsTheme
     ) {
         self.selectionType = selectionType
         self.enabledAccounts = enabledAccounts
         self.disabledAccounts = disabledAccounts
+        self.theme = theme
         super.init(frame: .zero)
         addAndPinSubviewToSafeArea(verticalStackView)
     }
@@ -52,81 +55,55 @@ final class AccountPickerSelectionListView: UIView {
             arrangedSubview.removeFromSuperview()
         }
 
-        if selectionType == .checkbox {
-            // show a "all accounts" cell
-            let allAccountsCellView = AccountPickerSelectionRowView(
-                selectionType: .checkbox,
-                isDisabled: false,
-                didSelect: { [weak self] in
-                    guard let self = self else { return }
-                    let isAllAccountsSelected = (self.enabledAccounts.count == selectedAccounts.count)
-                    var selectedAccounts = selectedAccounts
-                    if isAllAccountsSelected {
-                        selectedAccounts.removeAll()
-                    } else {
-                        selectedAccounts = self.enabledAccounts
-                    }
-                    self.delegate?.accountPickerSelectionListView(self, didSelectAccounts: selectedAccounts)
-                }
-            )
-            allAccountsCellView.setLeadingTitle(
-                STPLocalizedString(
-                    "All accounts",
-                    "A button that allows users to select all their bank accounts. This button appears in a screen that allows users to select which bank accounts they want to use to pay for something."
-                ),
-                trailingTitle: nil,
-                subtitle: nil,
-                isSelected: (enabledAccounts.count == selectedAccounts.count)
-            )
-            verticalStackView.addArrangedSubview(allAccountsCellView)
-        }
-
         // list enabled accounts
         enabledAccounts.forEach { account in
-            let accountCellView = AccountPickerSelectionRowView(
-                selectionType: selectionType,
+            let accountRowView = AccountPickerRowView(
                 isDisabled: false,
+                isFaded: false,
+                theme: theme,
                 didSelect: { [weak self] in
                     guard let self = self else { return }
                     var selectedAccounts = selectedAccounts
                     if let index = selectedAccounts.firstIndex(where: { $0.id == account.id }) {
                         selectedAccounts.remove(at: index)
                     } else {
-                        if self.selectionType == .checkbox {
+                        if self.selectionType == .multiple {
                             selectedAccounts.append(account)
-                        } else {  // radiobutton
+                        } else {  // single select
                             selectedAccounts = [account]  // select only one account
                         }
                     }
                     self.delegate?.accountPickerSelectionListView(self, didSelectAccounts: selectedAccounts)
                 }
             )
-            let rowTitles = AccountPickerHelpers.rowTitles(forAccount: account, captionWillHideAccountNumbers: false)
-            accountCellView.setLeadingTitle(
-                rowTitles.leadingTitle,
-                trailingTitle: rowTitles.trailingTitle,
-                subtitle: AccountPickerHelpers.rowSubtitle(forAccount: account),
+            let rowInfo = AccountPickerHelpers.rowInfo(forAccount: account)
+            accountRowView.set(
+                title: rowInfo.accountName,
+                subtitle: rowInfo.accountNumbers,
+                balanceString: rowInfo.balanceString,
                 isSelected: selectedAccounts.contains(where: { $0.id == account.id })
             )
-            verticalStackView.addArrangedSubview(accountCellView)
+            verticalStackView.addArrangedSubview(accountRowView)
         }
 
         // list disabled accounts
         disabledAccounts.forEach { disabledAccount in
-            let accountCellView = AccountPickerSelectionRowView(
-                selectionType: selectionType,
+            let accountRowView = AccountPickerRowView(
                 isDisabled: true,
+                isFaded: true,
+                theme: theme,
                 didSelect: {
                     // can't select disabled accounts
                 }
             )
-            accountCellView.setLeadingTitle(
-                AccountPickerHelpers.rowTitles(forAccount: disabledAccount, captionWillHideAccountNumbers: false).leadingTitle,
-                trailingTitle: "••••\(disabledAccount.displayableAccountNumbers ?? "")",
+            let rowInfo = AccountPickerHelpers.rowInfo(forAccount: disabledAccount)
+            accountRowView.set(
+                title: rowInfo.accountName,
                 subtitle: disabledAccount.allowSelectionMessage,
+                balanceString: nil,
                 isSelected: false
             )
-            verticalStackView.addArrangedSubview(accountCellView)
+            verticalStackView.addArrangedSubview(accountRowView)
         }
     }
 }

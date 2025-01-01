@@ -22,17 +22,23 @@ final class LinkInlineSignupView: UIView {
 
     let viewModel: LinkInlineSignupViewModel
 
-    private var theme: ElementsUITheme {
+    private var theme: ElementsAppearance {
         return viewModel.configuration.appearance.asElementsTheme
     }
 
+    let borderColor: UIColor
+
     private(set) lazy var checkboxElement = CheckboxElement(
         merchantName: viewModel.configuration.merchantDisplayName,
-        appearance: viewModel.configuration.appearance
+        appearance: viewModel.configuration.appearance,
+        borderColor: borderColor
     )
 
     private(set) lazy var emailElement: LinkEmailElement = {
-        let element = LinkEmailElement(defaultValue: viewModel.emailAddress, theme: theme)
+        let element = LinkEmailElement(defaultValue: viewModel.emailAddress,
+                                       isOptional: viewModel.isEmailOptional,
+                                       showLogo: viewModel.mode != .textFieldsOnlyPhoneFirst,
+                                       theme: theme)
         element.indicatorTintColor = theme.colors.primary
         return element
     }()
@@ -42,21 +48,41 @@ final class LinkInlineSignupView: UIView {
         return TextFieldElement(configuration: configuration, theme: theme)
     }()
 
-    private(set) lazy var phoneNumberElement = PhoneNumberElement(
-        defaultCountryCode: viewModel.configuration.defaultBillingDetails.address.country,
-        defaultPhoneNumber: viewModel.configuration.defaultBillingDetails.phone, theme: theme
-    )
+    private(set) lazy var phoneNumberElement: PhoneNumberElement = {
+        // Don't allow a default phone number in textFieldsOnly mode.
+        // Otherwise, we'd imply consumer consent when it hasn't occurred.
+        switch viewModel.mode {
+        case .checkbox:
+            return PhoneNumberElement(
+                defaultCountryCode: viewModel.configuration.defaultBillingDetails.address.country,
+                defaultPhoneNumber: viewModel.configuration.defaultBillingDetails.phone,
+                theme: theme
+        )
+        case .textFieldsOnlyEmailFirst:
+            return PhoneNumberElement(isOptional: viewModel.isPhoneNumberOptional, theme: theme)
+        case .textFieldsOnlyPhoneFirst:
+            return PhoneNumberElement(isOptional: viewModel.isPhoneNumberOptional, infoView: LinkMoreInfoView(), theme: theme)
+        }
+    }()
 
     // MARK: Sections
 
-    private lazy var emailSection = SectionElement(elements: [emailElement], theme: theme)
+    private lazy var emailSection: Element = {
+        return emailElement
+    }()
 
-    private lazy var nameSection = SectionElement(elements: [nameElement], theme: theme)
+    private lazy var nameSection: Element = {
+        return nameElement
+    }()
 
-    private lazy var phoneNumberSection = SectionElement(elements: [phoneNumberElement], theme: theme)
+    private lazy var phoneNumberSection: Element = {
+        return phoneNumberElement
+    }()
 
     private(set) lazy var legalTermsElement: StaticElement = {
-        let legalView = LinkLegalTermsView(textAlignment: .left, delegate: self)
+        let legalView = LinkLegalTermsView(textAlignment: .left,
+                                           mode: viewModel.mode,
+                                           delegate: self)
         legalView.font = theme.fonts.caption
         legalView.textColor = theme.colors.secondaryText
         legalView.tintColor = theme.colors.primary
@@ -66,22 +92,40 @@ final class LinkInlineSignupView: UIView {
         )
     }()
 
-    private(set) lazy var moreInfoElement: StaticElement = {
-        let infoView = LinkMoreInfoView(theme: theme)
-        return StaticElement(view: infoView)
+    private lazy var combinedEmailNameSection: Element = {
+        return SectionElement(elements: [emailSection, phoneNumberSection, nameElement], theme: theme)
     }()
 
-    private lazy var formElement = FormElement(elements: [
-        checkboxElement,
-        emailSection,
-        phoneNumberSection,
-        nameSection,
-        legalTermsElement,
-        moreInfoElement,
-    ], theme: theme)
+    private lazy var formElement: FormElement = {
+        var elements: [Element] = []
+        if viewModel.mode == .textFieldsOnlyPhoneFirst {
+            elements.insert(contentsOf: [phoneNumberSection, emailSection, nameSection], at: 0)
+        } else if viewModel.mode == .textFieldsOnlyEmailFirst {
+            elements.insert(contentsOf: [emailSection, phoneNumberSection, nameSection], at: 0)
+        } else if viewModel.mode == .checkbox {
+            elements.insert(contentsOf: [checkboxElement], at: 0)
+            elements.insert(contentsOf: [combinedEmailNameSection], at: 1)
+        }
+
+        let style: FormElement.Style = viewModel.showCheckbox ? .plain : .bordered
+        let formElement = FormElement(elements: elements, style: style, theme: theme)
+        let containerFormElement = FormElement(elements: [formElement, legalTermsElement], theme: theme, customSpacing: [(formElement, ElementsUI.formSpacing - 4.0)])
+        return containerFormElement
+    }()
 
     init(viewModel: LinkInlineSignupViewModel) {
         self.viewModel = viewModel
+
+        if viewModel.configuration.appearance.colors.componentBorder.rgba.alpha != 0 {
+            // Link border color should match other component borders
+            borderColor = viewModel.configuration.appearance.colors.componentBorder
+        } else {
+            // If the borders are hidden, use a color that contrasts with the background color.
+            let backgroundColor = viewModel.configuration.appearance.colors.background
+            borderColor = UIColor(dynamicProvider: { traitCollection in
+                return backgroundColor.resolvedColor(with: traitCollection).contrastingColor.withAlphaComponent(0.2)
+            })
+        }
         super.init(frame: .zero)
         setupUI()
         setupDefaults()
@@ -95,7 +139,7 @@ final class LinkInlineSignupView: UIView {
 
     func setupUI() {
         clipsToBounds = true
-        directionalLayoutMargins = .insets(amount: 16)
+        directionalLayoutMargins = .insets(amount: viewModel.layoutInsets)
 
         formElement.view.translatesAutoresizingMaskIntoConstraints = false
         addSubview(formElement.view)
@@ -112,6 +156,10 @@ final class LinkInlineSignupView: UIView {
 
     func setupDefaults() {
         viewModel.phoneNumber = phoneNumberElement.phoneNumber
+        if let phoneNumber = viewModel.phoneNumber,
+           !phoneNumber.isEmpty {
+            viewModel.phoneNumberWasPrefilled = true
+        }
     }
 
     func setupBindings() {
@@ -126,15 +174,22 @@ final class LinkInlineSignupView: UIView {
         } else {
             emailElement.stopAnimating()
         }
-
+        if viewModel.mode == .checkbox {
+            formElement.toggleChild(combinedEmailNameSection, show: viewModel.shouldShowEmailField, animated: animated)
+        }
         formElement.toggleChild(emailSection, show: viewModel.shouldShowEmailField, animated: animated)
         formElement.toggleChild(phoneNumberSection, show: viewModel.shouldShowPhoneField, animated: animated)
         formElement.toggleChild(nameSection, show: viewModel.shouldShowNameField, animated: animated)
         formElement.toggleChild(legalTermsElement, show: viewModel.shouldShowLegalTerms, animated: animated)
-        formElement.toggleChild(moreInfoElement, show: viewModel.shouldShowLegalTerms, animated: animated)
 
-        // 2-way binding
-        checkboxElement.isChecked = viewModel.saveCheckboxChecked
+        switch viewModel.mode {
+        case .checkbox:
+            // 2-way binding
+            checkboxElement.isChecked = viewModel.saveCheckboxChecked
+        case .textFieldsOnlyEmailFirst, .textFieldsOnlyPhoneFirst:
+            // assume checkbox is checked in text field only mode
+            viewModel.saveCheckboxChecked = true
+        }
     }
 
     private func updateAppearance() {
@@ -144,15 +199,16 @@ final class LinkInlineSignupView: UIView {
         if viewModel.configuration.appearance.borderWidth == 0.0 ||
             viewModel.configuration.appearance.colors.componentBorder.rgba.alpha == 0.0 {
             layer.borderWidth = 1.0
-            layer.borderColor = viewModel.configuration.appearance
-                .colors.background.contrastingColor.withAlphaComponent(0.2).cgColor
+            layer.borderColor = borderColor.cgColor
         }
     }
 
+    #if !canImport(CompositorServices)
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         updateAppearance()
     }
+    #endif
 
     private func focusOnEmptyRequiredField() {
         if viewModel.emailAddress == nil {
@@ -163,7 +219,6 @@ final class LinkInlineSignupView: UIView {
             _ = phoneNumberElement.beginEditing()
         }
     }
-
 }
 
 extension LinkInlineSignupView: ElementDelegate {
@@ -214,7 +269,11 @@ extension LinkInlineSignupView: LinkLegalTermsViewDelegate {
 
     func legalTermsView(_ legalTermsView: LinkLegalTermsView, didTapOnLinkWithURL url: URL) -> Bool {
         let safariVC = SFSafariViewController(url: url)
+
+        #if !canImport(CompositorServices)
         safariVC.dismissButtonStyle = .close
+        safariVC.preferredControlTintColor = window?.tintColor ?? viewModel.configuration.appearance.colors.primary
+        #endif
         safariVC.modalPresentationStyle = .overFullScreen
 
         guard let topController = window?.findTopMostPresentedViewController() else {
@@ -225,4 +284,19 @@ extension LinkInlineSignupView: LinkLegalTermsViewDelegate {
         return true
     }
 
+}
+
+extension LinkInlineSignupView: EventHandler {
+    func handleEvent(_ event: STPEvent) {
+        UIView.animate(withDuration: PaymentSheetUI.defaultAnimationDuration) {
+            switch event {
+            case .shouldDisableUserInteraction:
+                self.checkboxElement.setUserInteraction(isUserInteractionEnabled: false)
+            case .shouldEnableUserInteraction:
+                self.checkboxElement.setUserInteraction(isUserInteractionEnabled: true)
+            default:
+                break
+            }
+        }
+    }
 }

@@ -47,27 +47,6 @@ public class STPBankAccountCollector: NSObject {
     public typealias STPCollectBankAccountForPaymentCompletionBlock = (STPPaymentIntent?, NSError?)
         -> Void
 
-    func error(
-        for errorCode: STPCollectBankAccountError,
-        userInfo additionalUserInfo: [AnyHashable: Any]? = nil
-    ) -> NSError {
-        var userInfo: [AnyHashable: Any] = additionalUserInfo ?? [:]
-        switch errorCode {
-        case .financialConnectionsSDKNotLinked:
-            userInfo[STPError.errorMessageKey] =
-                "StripeFinancialConnections SDK has not been linked into your project"
-        case .invalidClientSecret:
-            userInfo[STPError.errorMessageKey] = "Unable to parse client secret"
-        case .unexpectedError:
-            userInfo[STPError.errorMessageKey] = NSError.stp_unexpectedErrorMessage()
-        }
-        return NSError(
-            domain: STPPaymentHandler.errorDomain,
-            code: errorCode.rawValue,
-            userInfo: userInfo as? [String: Any]
-        )
-    }
-
     /// Presents a modal from the viewController to collect bank account
     /// and if completed successfully, link your bank account to a PaymentIntent
     /// - Parameters:
@@ -111,8 +90,44 @@ public class STPBankAccountCollector: NSObject {
         from viewController: UIViewController,
         completion: @escaping STPCollectBankAccountForPaymentCompletionBlock
     ) {
-        guard let paymentIntentID = STPPaymentIntent.id(fromClientSecret: clientSecret) else {
-            completion(nil, error(for: .invalidClientSecret))
+        collectBankAccountForPayment(
+            clientSecret: clientSecret,
+            returnURL: returnURL,
+            params: params,
+            from: viewController,
+            onEvent: nil,
+            completion: completion
+        )
+    }
+
+    /// Presents a modal from the viewController to collect bank account
+    /// and if completed successfully, link your bank account to a PaymentIntent
+    /// - Parameters:
+    ///   - clientSecret:      Client secret of the payment intent
+    ///   - returnURL:         A URL that redirects back to your app to be used to return after completing authentication in another app (such as bank app or Safari).
+    ///   - params:            Parameters for this call
+    ///   - viewController:    Presenting view controller that will present the modal
+    ///   - onEvent:           The `onEvent` closure is triggered upon the occurrence of specific events during the process of a user connecting their financial accounts.
+    ///   - completion:        Completion block to be called on completion of the operation.
+    ///                        Upon success, the `STPPaymentIntent` instance will have an
+    ///                        expanded `paymentMethod` containing detailed payment method information
+    public func collectBankAccountForPayment(
+        clientSecret: String,
+        returnURL: String?,
+        params: STPCollectBankAccountParams,
+        from viewController: UIViewController,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
+        completion: @escaping STPCollectBankAccountForPaymentCompletionBlock
+    ) {
+        let paymentIntentID = STPPaymentIntent.id(fromClientSecret: clientSecret)
+        logCollectBankAccountStarted(type: .payment, intentID: paymentIntentID)
+        // Overwrite completion to send an analytic before calling the caller-supplied completion
+        let completion: (FinancialConnectionsSDKResult?, STPPaymentIntent?, NSError?) -> Void = { result, paymentIntent, error in
+            self.logCollectBankAccountFinished(type: .payment, intentID: paymentIntent?.stripeId, linkAccountSessionID: nil, financialConnectionsSDKResult: result, error: error)
+            completion(paymentIntent, error)
+        }
+        guard let paymentIntentID else {
+            completion(nil, nil, error(for: .invalidClientSecret))
             return
         }
         let financialConnectionsCompletion:
@@ -120,17 +135,16 @@ public class STPBankAccountCollector: NSObject {
                 result,
                 linkAccountSession,
                 error in
-                if let error = error {
-                    completion(
-                        nil,
-                        self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
-                    )
+                if let error {
+                    completion(result, nil, error)
                     return
                 }
-                guard let linkAccountSession = linkAccountSession,
-                    let result = result
-                else {
-                    completion(nil, NSError.stp_genericFailedToParseResponseError())
+                guard let result else {
+                    completion(result, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "collectBankAccountForPayment() completed without a result"))
+                    return
+                }
+                guard let linkAccountSession else {
+                    completion(result, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "collectBankAccountForPayment() completed without a link account session"))
                     return
                 }
 
@@ -139,46 +153,74 @@ public class STPBankAccountCollector: NSObject {
                     self.attachLinkAccountSessionToPaymentIntent(
                         paymentIntentID: paymentIntentID,
                         clientSecret: clientSecret,
-                        linkAccountSession: linkAccountSession,
-                        completion: completion
-                    )
+                        linkAccountSession: linkAccountSession
+                    ) { paymentIntent, error in
+                        completion(result, paymentIntent, error)
+                    }
                 case .cancelled:
                     self.apiClient.retrievePaymentIntent(withClientSecret: clientSecret) {
                         intent,
                         error in
-                        if let intent = intent {
-                            completion(intent, nil)
-                        } else if let error = error {
-                            completion(
-                                nil,
-                                self.error(
-                                    for: .unexpectedError,
-                                    userInfo: [NSUnderlyingErrorKey: error]
-                                )
-                            )
+                        if let intent {
+                            completion(result, intent, nil)
+                        } else if let error {
+                            completion(result, nil, error as NSError)
                         } else {
-                            completion(nil, self.error(for: .unexpectedError))
+                            completion(result, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "Canceled and retrieved PI without an error or intent"))
                         }
                     }
                 case .failed(let error):
-                    completion(
-                        nil,
-                        self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
-                    )
+                    completion(result, nil, error as NSError)
                 }
             }
-        collectBankAccountForPayment(
+        _collectBankAccountForPayment(
             clientSecret: clientSecret,
             returnURL: returnURL,
+            onEvent: onEvent,
             params: params,
             from: viewController,
             financialConnectionsCompletion: financialConnectionsCompletion
         )
     }
 
+    @_spi(STP) public typealias CollectBankAccountCompletionBlock = (FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?) -> Void
     @_spi(STP) public func collectBankAccountForPayment(
         clientSecret: String,
         returnURL: String?,
+        additionalParameters: [String: Any] = [:],
+        elementsSessionContext: ElementsSessionContext?,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
+        params: STPCollectBankAccountParams,
+        from viewController: UIViewController,
+        financialConnectionsCompletion: @escaping (
+            FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?
+        ) -> Void
+    ) {
+        let paymentIntentID = STPPaymentIntent.id(fromClientSecret: clientSecret)
+        logCollectBankAccountStarted(type: .payment, intentID: paymentIntentID)
+        // Overwrite completion to send an analytic before calling the caller-supplied completion
+        let financialConnectionsCompletion: (FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?) -> Void = { result, linkAccountSession, error in
+            self.logCollectBankAccountFinished(type: .payment, intentID: paymentIntentID, linkAccountSessionID: linkAccountSession?.stripeID, financialConnectionsSDKResult: result, error: error)
+            financialConnectionsCompletion(result, linkAccountSession, error)
+        }
+        _collectBankAccountForPayment(
+            clientSecret: clientSecret,
+            returnURL: returnURL,
+            additionalParameters: additionalParameters,
+            elementsSessionContext: elementsSessionContext,
+            onEvent: onEvent,
+            params: params,
+            from: viewController,
+            financialConnectionsCompletion: financialConnectionsCompletion
+        )
+    }
+
+    private func _collectBankAccountForPayment(
+        clientSecret: String,
+        returnURL: String?,
+        additionalParameters: [String: Any] = [:],
+        elementsSessionContext: ElementsSessionContext? = nil,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
         params: STPCollectBankAccountParams,
         from viewController: UIViewController,
         financialConnectionsCompletion: @escaping (
@@ -199,19 +241,15 @@ public class STPBankAccountCollector: NSObject {
         }
 
         let linkAccountSessionCallback: STPLinkAccountSessionBlock = { linkAccountSession, error in
-            if let error = error {
-                financialConnectionsCompletion(
-                    nil,
-                    nil,
-                    self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
-                )
+            if let error {
+                financialConnectionsCompletion(nil, nil, error as NSError)
                 return
             }
-            guard let linkAccountSession = linkAccountSession else {
+            guard let linkAccountSession else {
                 financialConnectionsCompletion(
                     nil,
                     nil,
-                    NSError.stp_genericFailedToParseResponseError()
+                    self.error(for: .unexpectedError, loggingSafeErrorMessage: "createLinkAccountSession w/ PI called without an error or link account session")
                 )
                 return
             }
@@ -219,6 +257,8 @@ public class STPBankAccountCollector: NSObject {
                 apiClient: self.apiClient,
                 clientSecret: linkAccountSession.clientSecret,
                 returnURL: returnURL,
+                elementsSessionContext: elementsSessionContext,
+                onEvent: onEvent,
                 from: viewController
             ) { result in
                 financialConnectionsCompletion(result, linkAccountSession, nil)
@@ -231,6 +271,8 @@ public class STPBankAccountCollector: NSObject {
             paymentMethodType: params.paymentMethodParams.type,
             customerName: params.paymentMethodParams.billingDetails?.name,
             customerEmailAddress: params.paymentMethodParams.billingDetails?.email,
+            linkMode: elementsSessionContext?.linkMode,
+            additionalParameters: additionalParameters,
             completion: linkAccountSessionCallback
         )
     }
@@ -247,15 +289,15 @@ public class STPBankAccountCollector: NSObject {
             linkAccountSessionID: linkAccountSession.stripeID,
             clientSecret: clientSecret
         ) { paymentIntent, error in
-            if let error = error {
+            if let error {
                 completion(
                     nil,
-                    self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
+                    error as NSError
                 )
                 return
             }
             guard let paymentIntent = paymentIntent else {
-                completion(nil, NSError.stp_genericFailedToParseResponseError())
+                completion(nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "attachLinkAccountSession() returned neither error nor PaymentIntent"))
                 return
             }
             completion(paymentIntent, nil)
@@ -309,8 +351,44 @@ public class STPBankAccountCollector: NSObject {
         from viewController: UIViewController,
         completion: @escaping STPCollectBankAccountForSetupCompletionBlock
     ) {
-        guard let setupIntentID = STPSetupIntent.id(fromClientSecret: clientSecret) else {
-            completion(nil, error(for: .invalidClientSecret))
+        collectBankAccountForSetup(
+            clientSecret: clientSecret,
+            returnURL: returnURL,
+            params: params,
+            from: viewController,
+            onEvent: nil,
+            completion: completion
+        )
+    }
+
+    /// Presents a modal from the viewController to collect bank account
+    /// and if completed successfully, link your bank account to a SetupIntent
+    /// - Parameters:
+    ///   - clientSecret:      Client secret of the setup intent
+    ///   - returnURL:         A URL that redirects back to your app to be used to return after completing authentication in another app (such as bank app or Safari).
+    ///   - params:            Parameters for this call
+    ///   - viewController:    Presenting view controller that will present the modal
+    ///   - onEvent:           The `onEvent` closure is triggered upon the occurrence of specific events during the process of a user connecting their financial accounts.
+    ///   - completion:        Completion block to be called on completion of the operation.
+    ///                        Upon success, the `STPSetupIntent` instance will have an
+    ///                        expanded `paymentMethod` containing detailed payment method information
+    public func collectBankAccountForSetup(
+        clientSecret: String,
+        returnURL: String?,
+        params: STPCollectBankAccountParams,
+        from viewController: UIViewController,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
+        completion: @escaping STPCollectBankAccountForSetupCompletionBlock
+    ) {
+        let setupIntentID = STPSetupIntent.id(fromClientSecret: clientSecret)
+        logCollectBankAccountStarted(type: .setup, intentID: setupIntentID)
+        // Overwrite completion to send an analytic before calling the caller-supplied completion
+        let completion: (FinancialConnectionsSDKResult?, STPSetupIntent?, NSError?) -> Void = { result, setupIntent, error in
+            self.logCollectBankAccountFinished(type: .setup, intentID: setupIntent?.stripeID, linkAccountSessionID: nil, financialConnectionsSDKResult: result, error: error)
+            completion(setupIntent, error)
+        }
+        guard let setupIntentID else {
+            completion(nil, nil, error(for: .invalidClientSecret))
             return
         }
         let financialConnectionsCompletion:
@@ -318,17 +396,16 @@ public class STPBankAccountCollector: NSObject {
                 result,
                 linkAccountSession,
                 error in
-                if let error = error {
-                    completion(
-                        nil,
-                        self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
-                    )
+                if let error {
+                    completion(result, nil, error as NSError)
                     return
                 }
-                guard let linkAccountSession = linkAccountSession,
-                    let result = result
-                else {
-                    completion(nil, NSError.stp_genericFailedToParseResponseError())
+                guard let result else {
+                    completion(result, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "collectBankAccountForSetup() completed without a result"))
+                    return
+                }
+                guard let linkAccountSession else {
+                    completion(result, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "collectBankAccountForSetup() completed without a link account session"))
                     return
                 }
                 switch result {
@@ -336,37 +413,30 @@ public class STPBankAccountCollector: NSObject {
                     self.attachLinkAccountSessionToSetupIntent(
                         setupIntentID: setupIntentID,
                         clientSecret: clientSecret,
-                        linkAccountSession: linkAccountSession,
-                        completion: completion
-                    )
+                        linkAccountSession: linkAccountSession
+                    ) { setupIntent, error in
+                        completion(result, setupIntent, error)
+                    }
                 case .cancelled:
                     self.apiClient.retrieveSetupIntent(withClientSecret: clientSecret) {
                         intent,
                         error in
                         if let intent = intent {
-                            completion(intent, nil)
-                        } else if let error = error {
-                            completion(
-                                nil,
-                                self.error(
-                                    for: .unexpectedError,
-                                    userInfo: [NSUnderlyingErrorKey: error]
-                                )
-                            )
+                            completion(result, intent, nil)
+                        } else if let error {
+                            completion(result, nil, error as NSError)
                         } else {
-                            completion(nil, self.error(for: .unexpectedError))
+                            completion(result, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "Canceled and retrieved SI without an error or intent"))
                         }
                     }
                 case .failed(let error):
-                    completion(
-                        nil,
-                        self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
-                    )
+                    completion(result, nil, error as NSError)
                 }
             }
         collectBankAccountForSetup(
             clientSecret: clientSecret,
             returnURL: returnURL,
+            onEvent: onEvent,
             params: params,
             from: viewController,
             financialConnectionsCompletion: financialConnectionsCompletion
@@ -376,6 +446,40 @@ public class STPBankAccountCollector: NSObject {
     @_spi(STP) public func collectBankAccountForSetup(
         clientSecret: String,
         returnURL: String?,
+        additionalParameters: [String: Any] = [:],
+        elementsSessionContext: ElementsSessionContext? = nil,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
+        params: STPCollectBankAccountParams,
+        from viewController: UIViewController,
+        financialConnectionsCompletion: @escaping (
+            FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?
+        ) -> Void
+    ) {
+        let setupIntentID = STPSetupIntent.id(fromClientSecret: clientSecret)
+        logCollectBankAccountStarted(type: .setup, intentID: setupIntentID)
+        // Overwrite completion to send an analytic before calling the caller-supplied completion
+        let financialConnectionsCompletion: (FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?) -> Void = { result, linkAccountSession, error in
+            self.logCollectBankAccountFinished(type: .setup, intentID: setupIntentID, linkAccountSessionID: linkAccountSession?.stripeID, financialConnectionsSDKResult: result, error: error)
+            financialConnectionsCompletion(result, linkAccountSession, error)
+        }
+        _collectBankAccountForSetup(
+            clientSecret: clientSecret,
+            returnURL: returnURL,
+            additionalParameters: additionalParameters,
+            elementsSessionContext: elementsSessionContext,
+            onEvent: onEvent,
+            params: params,
+            from: viewController,
+            financialConnectionsCompletion: financialConnectionsCompletion
+        )
+    }
+
+    private func _collectBankAccountForSetup(
+        clientSecret: String,
+        returnURL: String?,
+        additionalParameters: [String: Any] = [:],
+        elementsSessionContext: ElementsSessionContext?,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
         params: STPCollectBankAccountParams,
         from viewController: UIViewController,
         financialConnectionsCompletion: @escaping (
@@ -394,26 +498,25 @@ public class STPBankAccountCollector: NSObject {
             return
         }
         let linkAccountSessionCallback: STPLinkAccountSessionBlock = { linkAccountSession, error in
-            if let error = error {
+            if let error {
+                financialConnectionsCompletion(nil, nil, error as NSError)
+                return
+            }
+            guard let linkAccountSession else {
                 financialConnectionsCompletion(
                     nil,
                     nil,
-                    self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
+                    self.error(for: .unexpectedError, loggingSafeErrorMessage: "createLinkAccountSession w/ SI called without an error or link account session")
                 )
                 return
             }
-            guard let linkAccountSession = linkAccountSession else {
-                financialConnectionsCompletion(
-                    nil,
-                    nil,
-                    NSError.stp_genericFailedToParseResponseError()
-                )
-                return
-            }
+
             financialConnectionsAPI.presentFinancialConnectionsSheet(
                 apiClient: self.apiClient,
                 clientSecret: linkAccountSession.clientSecret,
                 returnURL: returnURL,
+                elementsSessionContext: elementsSessionContext,
+                onEvent: onEvent,
                 from: viewController
             ) { result in
                 financialConnectionsCompletion(result, linkAccountSession, nil)
@@ -425,6 +528,8 @@ public class STPBankAccountCollector: NSObject {
             paymentMethodType: params.paymentMethodParams.type,
             customerName: params.paymentMethodParams.billingDetails?.name,
             customerEmailAddress: params.paymentMethodParams.billingDetails?.email,
+            linkMode: elementsSessionContext?.linkMode,
+            additionalParameters: additionalParameters,
             completion: linkAccountSessionCallback
         )
     }
@@ -441,15 +546,12 @@ public class STPBankAccountCollector: NSObject {
             linkAccountSessionID: linkAccountSession.stripeID,
             clientSecret: clientSecret
         ) { setupIntent, error in
-            if let error = error {
-                completion(
-                    nil,
-                    self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error])
-                )
+            if let error {
+                completion(nil, error as NSError)
                 return
             }
-            guard let setupIntent = setupIntent else {
-                completion(nil, NSError.stp_genericFailedToParseResponseError())
+            guard let setupIntent else {
+                completion(nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "attachLinkAccountSession() returned neither error nor SetupIntent"))
                 return
             }
             completion(setupIntent, nil)
@@ -460,14 +562,24 @@ public class STPBankAccountCollector: NSObject {
     @_spi(STP) public func collectBankAccountForDeferredIntent(
         sessionId: String,
         returnURL: String?,
+        onEvent: ((FinancialConnectionsEvent) -> Void)?,
         amount: Int?,
         currency: String?,
         onBehalfOf: String?,
+        additionalParameters: [String: Any] = [:],
+        elementsSessionContext: ElementsSessionContext?,
         from viewController: UIViewController,
         financialConnectionsCompletion: @escaping (
             FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?
         ) -> Void
     ) {
+        logCollectBankAccountStarted(type: .deferred, intentID: nil)
+        // Overwrite completion to send an analytic before calling the caller-supplied completion
+        let financialConnectionsCompletion: (FinancialConnectionsSDKResult?, LinkAccountSession?, NSError?) -> Void = { result, linkAccountSession, error in
+            self.logCollectBankAccountFinished(type: .deferred, intentID: nil, linkAccountSessionID: linkAccountSession?.stripeID, financialConnectionsSDKResult: result, error: error)
+            financialConnectionsCompletion(result, linkAccountSession, error)
+        }
+
         guard
             let financialConnectionsAPI = FinancialConnectionsSDKAvailability.financialConnections()
         else {
@@ -480,24 +592,118 @@ public class STPBankAccountCollector: NSObject {
             sessionId: sessionId,
             amount: amount,
             currency: currency,
-            onBehalfOf: onBehalfOf
+            onBehalfOf: onBehalfOf,
+            linkMode: elementsSessionContext?.linkMode,
+            additionalParameters: additionalParameters
         ) { linkAccountSession, error in
-            if let error = error {
-                financialConnectionsCompletion(nil, nil, self.error(for: .unexpectedError, userInfo: [NSUnderlyingErrorKey: error]))
+            if let error {
+                financialConnectionsCompletion(nil, nil, error as NSError)
                 return
             }
-            guard let linkAccountSession = linkAccountSession else {
-                financialConnectionsCompletion(nil, nil, NSError.stp_genericFailedToParseResponseError())
+            guard let linkAccountSession else {
+                financialConnectionsCompletion(nil, nil, self.error(for: .unexpectedError, loggingSafeErrorMessage: "createLinkAccountSessionForDeferredIntent called without an error or link account session"))
                 return
             }
             financialConnectionsAPI.presentFinancialConnectionsSheet(
                 apiClient: self.apiClient,
                 clientSecret: linkAccountSession.clientSecret,
                 returnURL: returnURL,
+                elementsSessionContext: elementsSessionContext,
+                onEvent: onEvent,
                 from: viewController
             ) { result in
                 financialConnectionsCompletion(result, linkAccountSession, nil)
             }
         }
+    }
+}
+
+// MARK: - Error
+extension STPBankAccountCollector {
+    private func error(
+        for errorCode: STPCollectBankAccountError,
+        loggingSafeErrorMessage: String? = nil
+    ) -> NSError {
+        var userInfo: [String: String] = [:]
+        switch errorCode {
+        case .financialConnectionsSDKNotLinked:
+            userInfo[STPError.errorMessageKey] =
+                "StripeFinancialConnections SDK has not been linked into your project"
+        case .invalidClientSecret:
+            userInfo[STPError.errorMessageKey] = "Unable to parse client secret"
+        case .unexpectedError:
+            userInfo[STPError.errorMessageKey] = loggingSafeErrorMessage
+        }
+        return STPBankAccountCollectorError(code: errorCode, loggingSafeUserInfo: userInfo) as NSError
+    }
+}
+
+/// STPBankAccountCollector errors (i.e. errors that are created by the STPBankAccountCollector class and have a corresponding STPCollectBankAccountError) used to be NSErrors.
+/// This struct exists so that these errors can be Swift errors to conform to AnalyticLoggableError, while still looking like the old NSErrors to users (i.e. same domain and code).
+struct STPBankAccountCollectorError: Error, CustomNSError, AnalyticLoggableError {
+    // AnalyticLoggableError properties
+    let analyticsErrorType: String = errorDomain
+    let analyticsErrorCode: String
+    let additionalNonPIIErrorDetails: [String: Any]
+
+    // CustomNSError properties, to not break old behavior when this was an NSError
+    static let errorDomain: String = "STPBankAccountCollectorErrorDomain"
+    let errorUserInfo: [String: Any]
+    let errorCode: Int
+
+    init(code: STPCollectBankAccountError, loggingSafeUserInfo: [String: String]) {
+        errorCode = code.rawValue
+        // Set analytics error code to the description (e.g. "invalidClientSecret")
+        analyticsErrorCode = code.description
+        errorUserInfo = loggingSafeUserInfo
+        additionalNonPIIErrorDetails = loggingSafeUserInfo
+    }
+}
+
+// MARK: - Analytic
+extension STPBankAccountCollector {
+    fileprivate struct Analytic: StripeCore.Analytic {
+        let event: StripeCore.STPAnalyticEvent
+        let intentID: String?
+        let linkAccountSessionID: String?
+        let intentType: IntentType
+        let financialConnectionsSDKResult: FinancialConnectionsSDKResult?
+        let error: Error?
+
+        var params: [String: Any] {
+            var params: [String: Any] = error?.serializeForV1Analytics() ?? [:]
+            params["intent_id"] = intentID
+            params["intent_type"] = intentType.rawValue
+            params["link_account_session_id"] = linkAccountSessionID
+            params["fc_sdk_result"] = {
+                switch financialConnectionsSDKResult {
+                case nil:
+                    return nil
+                case .cancelled:
+                    return "cancelled"
+                case .completed:
+                    return "completed"
+                case .failed:
+                    return "failed"
+                }
+            }()
+            return params
+        }
+
+    }
+    enum IntentType: String {
+        case payment
+        case setup
+        case deferred
+    }
+
+    func logCollectBankAccountStarted(type: IntentType, intentID: String?) {
+        let analytic = Analytic(event: .bankAccountCollectorStarted, intentID: intentID, linkAccountSessionID: nil, intentType: type, financialConnectionsSDKResult: nil, error: nil)
+        STPAnalyticsClient.sharedClient.log(analytic: analytic, apiClient: self.apiClient)
+    }
+
+    func logCollectBankAccountFinished(type: IntentType, intentID: String?, linkAccountSessionID: String?, financialConnectionsSDKResult: FinancialConnectionsSDKResult?, error: Error?) {
+        let analytic = Analytic(event: .bankAccountCollectorFinished, intentID: intentID, linkAccountSessionID: linkAccountSessionID, intentType: type, financialConnectionsSDKResult: financialConnectionsSDKResult, error: error)
+        STPAnalyticsClient.sharedClient.log(analytic: analytic, apiClient: self.apiClient)
     }
 }

@@ -36,18 +36,14 @@ class SectionContainerView: UIView {
     }()
 
     private(set) var views: [UIView]
-    private let theme: ElementsUITheme
+    private let theme: ElementsAppearance
 
     // MARK: - Initializers
-
-    convenience init(view: UIView, theme: ElementsUITheme = .default) {
-        self.init(views: [view], theme: theme)
-    }
 
     /**
      - Parameter views: A list of views to display in a row. To display multiple elements in a single row, put them inside a `MultiElementRowView`.
      */
-    init(views: [UIView], theme: ElementsUITheme = .default) {
+    init(views: [UIView], theme: ElementsAppearance = .default) {
         self.views = views
         self.theme = theme
         super.init(frame: .zero)
@@ -106,18 +102,20 @@ class SectionContainerView: UIView {
         )
     }
 
+#if !canImport(CompositorServices)
     override func traitCollectionDidChange(_ previousTraitCollection: UITraitCollection?) {
         super.traitCollectionDidChange(previousTraitCollection)
         updateUI()
     }
+#endif
 
     // MARK: - Internal methods
     func updateUI(newViews: [UIView]? = nil) {
         layer.applyShadow(shadow: theme.shadow)
         layer.cornerRadius = theme.cornerRadius
 
-        if isUserInteractionEnabled || isDarkMode() {
-            backgroundColor = theme.colors.background
+        if isUserInteractionEnabled || UITraitCollection.current.isDarkMode {
+            backgroundColor = theme.colors.componentBackground
         } else {
             backgroundColor = .tertiarySystemGroupedBackground
         }
@@ -174,6 +172,11 @@ class SectionContainerView: UIView {
         let shouldAnimate = Int(newStack.frame.size.height) != Int(oldStackHeight)
         viewController.animateHeightChange(duration: shouldAnimate ? 0.5 : 0.0, transition)
     }
+
+    func disableAppearance() {
+        stackView.customBackgroundColor = theme.colors.componentBackground.translucentMaskColor
+        updateUI()
+    }
 }
 
 // MARK: - EventHandler
@@ -197,7 +200,7 @@ extension SectionContainerView {
     class MultiElementRowView: UIView {
         let views: [UIView]
 
-        init(views: [UIView], theme: ElementsUITheme = .default) {
+        init(views: [UIView], theme: ElementsAppearance = .default) {
             self.views = views
             super.init(frame: .zero)
             let stackView = buildStackView(views: views, theme: theme)
@@ -212,14 +215,14 @@ extension SectionContainerView {
 
 // MARK: - StackViewWithSeparator
 
-private func buildStackView(views: [UIView], theme: ElementsUITheme = .default) -> StackViewWithSeparator {
+private func buildStackView(views: [UIView], theme: ElementsAppearance = .default) -> StackViewWithSeparator {
     let stackView = StackViewWithSeparator(arrangedSubviews: views)
     stackView.axis = .vertical
     stackView.spacing = theme.borderWidth
     stackView.separatorColor = theme.colors.divider
     stackView.borderColor = theme.colors.border
     stackView.borderCornerRadius = theme.cornerRadius
-    stackView.customBackgroundColor = theme.colors.background
+    stackView.customBackgroundColor = theme.colors.componentBackground
     stackView.drawBorder = true
     stackView.hideShadow = true // Shadow is handled by `SectionContainerView`
     return stackView

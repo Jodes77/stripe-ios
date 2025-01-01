@@ -48,7 +48,7 @@
 - (void)testIsValidKVO {
     id observer = OCMClassMock([UIViewController class]);
     self.sut.numberField.text = @"4242424242424242";
-    self.sut.expirationField.text = @"10/99";
+    self.sut.expirationField.text = @"10/50";
     self.sut.postalCodeField.text = @"90210";
     XCTAssertFalse(self.sut.isValid);
     
@@ -72,6 +72,12 @@
     self.sut.cvcField.text = @"123";
     
     [self waitForExpectationsWithTimeout:TestConstants.STPTestingNetworkRequestTimeout handler:nil];
+}
+
+- (void)testPaymentCardTextFieldCanSetPreferredBrands {
+    STPPaymentCardTextField *textField = [[STPPaymentCardTextField alloc] initWithFrame:self.window.bounds];
+    [textField setPreferredNetworks:@[[NSNumber numberWithInt:STPCardBrandVisa]]];
+    XCTAssertEqual([[[textField preferredNetworks] firstObject] intValue], STPCardBrandVisa);
 }
 
 @end

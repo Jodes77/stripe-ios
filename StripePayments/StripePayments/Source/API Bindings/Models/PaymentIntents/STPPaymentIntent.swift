@@ -129,23 +129,20 @@ public class STPPaymentIntent: NSObject {
     /// The optionally expanded PaymentMethod used in this PaymentIntent.
     @objc public let paymentMethod: STPPaymentMethod?
 
-    /// The ordered payment method preference for this PaymentIntent
-    @_spi(STP) public let orderedPaymentMethodTypes: [STPPaymentMethodType]
-
-    /// A list of payment method types that are not activated in live mode, but activated in test mode
-    @_spi(STP) public let unactivatedPaymentMethodTypes: [STPPaymentMethodType]
-
     /// Payment-method-specific configuration for this PaymentIntent.
     @_spi(STP) public let paymentMethodOptions: STPPaymentMethodOptions?
 
-    /// Link-specific settings for this PaymentIntent.
-    @_spi(STP) public let linkSettings: LinkSettings?
+    /// Whether the payment intent has setup for future usage set.
+    @_spi(STP) public var isSetupFutureUsageSet: Bool {
+        let setupFutureUsageInResponse = (paymentMethodOptions?.allResponseFields.values.contains(where: {
+            if let value = $0 as? [String: Any] {
+                return value["setup_future_usage"] != nil
+            }
+            return false
+        }) ?? false)
 
-    /// Country code of the user.
-    @_spi(STP) public let countryCode: String?
-
-    /// Country code of the merchant.
-    @_spi(STP) public let merchantCountryCode: String?
+        return setupFutureUsage != .none || setupFutureUsageInResponse
+    }
 
     /// :nodoc:
     @objc public override var description: String {
@@ -160,15 +157,12 @@ public class STPPaymentIntent: NSObject {
             "captureMethod = \(String(describing: allResponseFields["capture_method"] as? String))",
             "clientSecret = <redacted>",
             "confirmationMethod = \(String(describing: allResponseFields["confirmation_method"] as? String))",
-            "countryCode = \(String(describing: countryCode))",
             "created = \(created)",
             "currency = \(currency)",
             "description = \(String(describing: stripeDescription))",
             "lastPaymentError = \(String(describing: lastPaymentError))",
-            "linkSettings = \(String(describing: linkSettings))",
             "livemode = \(livemode)",
             "nextAction = \(String(describing: nextAction))",
-            "merchantCountryCode = \(String(describing: merchantCountryCode))",
             "paymentMethodId = \(String(describing: paymentMethodId))",
             "paymentMethod = \(String(describing: paymentMethod))",
             "paymentMethodOptions = \(String(describing: paymentMethodOptions))",
@@ -178,7 +172,6 @@ public class STPPaymentIntent: NSObject {
             "shipping = \(String(describing: shipping))",
             "sourceId = \(String(describing: sourceId))",
             "status = \(String(describing: allResponseFields["status"] as? String))",
-            "unactivatedPaymentMethodTypes = \(allResponseFields.stp_array(forKey: "unactivated_payment_method_types") ?? [])",
         ]
 
         return "<\(props.joined(separator: "; "))>"
@@ -191,15 +184,11 @@ public class STPPaymentIntent: NSObject {
         captureMethod: STPPaymentIntentCaptureMethod,
         clientSecret: String,
         confirmationMethod: STPPaymentIntentConfirmationMethod,
-        countryCode: String?,
         created: Date,
         currency: String,
         lastPaymentError: STPPaymentIntentLastPaymentError?,
-        linkSettings: LinkSettings?,
         livemode: Bool,
         nextAction: STPIntentAction?,
-        merchantCountryCode: String?,
-        orderedPaymentMethodTypes: [STPPaymentMethodType],
         paymentMethod: STPPaymentMethod?,
         paymentMethodId: String?,
         paymentMethodOptions: STPPaymentMethodOptions?,
@@ -210,8 +199,7 @@ public class STPPaymentIntent: NSObject {
         sourceId: String?,
         status: STPPaymentIntentStatus,
         stripeDescription: String?,
-        stripeId: String,
-        unactivatedPaymentMethodTypes: [STPPaymentMethodType]
+        stripeId: String
     ) {
         self.allResponseFields = allResponseFields
         self.amount = amount
@@ -219,15 +207,11 @@ public class STPPaymentIntent: NSObject {
         self.captureMethod = captureMethod
         self.clientSecret = clientSecret
         self.confirmationMethod = confirmationMethod
-        self.countryCode = countryCode
         self.created = created
         self.currency = currency
         self.lastPaymentError = lastPaymentError
-        self.linkSettings = linkSettings
         self.livemode = livemode
         self.nextAction = nextAction
-        self.merchantCountryCode = merchantCountryCode
-        self.orderedPaymentMethodTypes = orderedPaymentMethodTypes
         self.paymentMethod = paymentMethod
         self.paymentMethodId = paymentMethodId
         self.paymentMethodOptions = paymentMethodOptions
@@ -239,7 +223,6 @@ public class STPPaymentIntent: NSObject {
         self.status = status
         self.stripeDescription = stripeDescription
         self.stripeId = stripeId
-        self.unactivatedPaymentMethodTypes = unactivatedPaymentMethodTypes
         super.init()
     }
 }
@@ -249,31 +232,6 @@ extension STPPaymentIntent: STPAPIResponseDecodable {
 
     @objc
     public class func decodedObject(fromAPIResponse response: [AnyHashable: Any]?) -> Self? {
-        guard let response = response else {
-            return nil
-        }
-
-        if let paymentMethodPrefDict = response["payment_method_preference"] as? [AnyHashable: Any],
-            let paymentIntentDict = paymentMethodPrefDict["payment_intent"] as? [AnyHashable: Any],
-            let orderedPaymentMethodTypes = paymentMethodPrefDict["ordered_payment_method_types"]
-                as? [String]
-        {
-            // Consolidates expanded payment_intent and ordered_payment_method_types into singular dict for decoding
-            var dict = paymentIntentDict
-            dict["country_code"] = paymentMethodPrefDict["country_code"]
-            dict["merchant_country"] = response["merchant_country"]
-            dict["ordered_payment_method_types"] = orderedPaymentMethodTypes
-            dict["unactivated_payment_method_types"] = response["unactivated_payment_method_types"]
-            dict["link_settings"] = response["link_settings"]
-            dict["payment_method_specs"] = response["payment_method_specs"]
-            return decodeSTPPaymentIntentObject(fromAPIResponse: dict)
-        } else {
-            return decodeSTPPaymentIntentObject(fromAPIResponse: response)
-        }
-    }
-
-    class func decodeSTPPaymentIntentObject(fromAPIResponse response: [AnyHashable: Any]?) -> Self?
-    {
         guard let dict = response,
             let stripeId = dict["id"] as? String,
             let clientSecret = dict["client_secret"] as? String,
@@ -292,9 +250,6 @@ extension STPPaymentIntent: STPAPIResponseDecodable {
         )
         let setupFutureUsageString = dict["setup_future_usage"] as? String
         let canceledAtUnixTime = dict["canceled_at"] as? TimeInterval
-        let unactivatedPaymentTypes = STPPaymentMethod.paymentMethodTypes(
-            from: dict["unactivated_payment_method_types"] as? [String] ?? []
-        )
         return STPPaymentIntent(
             allResponseFields: dict,
             amount: amount,
@@ -307,22 +262,14 @@ extension STPPaymentIntent: STPAPIResponseDecodable {
             confirmationMethod: STPPaymentIntentConfirmationMethod.confirmationMethod(
                 from: dict["confirmation_method"] as? String ?? ""
             ),
-            countryCode: dict["country_code"] as? String,
             created: Date(timeIntervalSince1970: createdUnixTime),
             currency: currency,
             lastPaymentError: STPPaymentIntentLastPaymentError.decodedObject(
                 fromAPIResponse: dict["last_payment_error"] as? [AnyHashable: Any]
             ),
-            linkSettings: LinkSettings.decodedObject(
-                fromAPIResponse: dict["link_settings"] as? [AnyHashable: Any]
-            ),
             livemode: livemode,
             nextAction: STPIntentAction.decodedObject(
                 fromAPIResponse: dict["next_action"] as? [AnyHashable: Any]
-            ),
-            merchantCountryCode: dict["merchant_country"] as? String,
-            orderedPaymentMethodTypes: STPPaymentMethod.paymentMethodTypes(
-                from: dict["ordered_payment_method_types"] as? [String] ?? paymentMethodTypeStrings
             ),
             paymentMethod: paymentMethod,
             paymentMethodId: paymentMethod?.stripeId ?? dict["payment_method"] as? String,
@@ -339,8 +286,7 @@ extension STPPaymentIntent: STPAPIResponseDecodable {
             sourceId: dict["source"] as? String,
             status: STPPaymentIntentStatus.status(from: rawStatus),
             stripeDescription: dict["description"] as? String,
-            stripeId: stripeId,
-            unactivatedPaymentMethodTypes: unactivatedPaymentTypes
+            stripeId: stripeId
         ) as? Self
     }
 }
@@ -394,5 +340,23 @@ extension STPPaymentIntentStatus {
 
         let key = string.lowercased()
         return map[key] ?? .unknown
+    }
+
+    /// Take a `STPPaymentIntentStatus` and return the corresponding string,
+    /// or "unknown" if it's not recognized by this function.
+    /// - Parameter status: the `STPPaymentIntentStatus` to convert into a string
+    internal static func string(from status: STPPaymentIntentStatus) -> String {
+        let map: [STPPaymentIntentStatus: String] = [
+            .requiresPaymentMethod: "requires_payment_method",
+            .requiresConfirmation: "requires_confirmation",
+            .requiresAction: "requires_action",
+            .processing: "processing",
+            .succeeded: "succeeded",
+            .requiresCapture: "requires_capture",
+            .canceled: "canceled",
+            .unknown: "unknown",
+        ]
+
+        return map[status] ?? "unknown"
     }
 }

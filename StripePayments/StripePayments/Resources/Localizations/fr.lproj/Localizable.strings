@@ -1,4 +1,4 @@
-"AU BECS Direct Debit" = "Prélèvement automatique BECS (Australie)";
+"AU Direct Debit" = "Prélèvement automatique AU";
 
 "Affirm" = "Affirm";
 
@@ -8,9 +8,9 @@
 
 "BLIK" = "BLIK";
 
-"Bancontact" = "Bancontact";
+"Bacs Direct Debit" = "Prélèvement automatique Bacs";
 
-"Bank" = "Bancaire";
+"Bancontact" = "Bancontact";
 
 "Boleto" = "Boleto";
 
@@ -28,6 +28,8 @@
 
 "Klarna" = "Klarna";
 
+"Konbini" = "Konbini";
+
 "Link" = "Link";
 
 "NetBanking" = "Netbanking";
@@ -42,11 +44,13 @@
 
 "Sofort" = "Sofort";
 
+"Swish" = "Swish";
+
 "Timed out authenticating your payment method -- try again" = "La tentative d'identification de votre moyen de paiement a été interrompue, veuillez réessayer.";
 
 "UPI" = "UPI";
 
-"US Bank Account" = "Compte bancaire aux États-Unis";
+"US bank account" = "Compte bancaire américain";
 
 "Unknown" = "Inconnu";
 

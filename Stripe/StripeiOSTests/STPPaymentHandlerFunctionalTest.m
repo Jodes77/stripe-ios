@@ -40,7 +40,10 @@
     __block NSString *clientSecret = @"pi_123_secret_456";
 
     id apiClient = OCMPartialMock(STPAPIClient.sharedClient);
-    STPPaymentIntent *paymentIntent = [STPFixtures paymentIntent];
+    NSMutableDictionary *paymentIntentJSON = [[STPTestUtils jsonNamed:@"PaymentIntent"] mutableCopy];
+    paymentIntentJSON[@"payment_method"] = [STPTestUtils jsonNamed:STPTestJSONPaymentMethodCard];
+    STPPaymentIntent *paymentIntent = [STPPaymentIntent decodedObjectFromAPIResponse:paymentIntentJSON];
+    
     OCMStub([apiClient confirmPaymentIntentWithParams:[OCMArg any] expand:[OCMArg any] completion:[OCMArg any]]).andDo(^(NSInvocation *invocation) {
         void (^handler)(STPPaymentIntent *paymentIntent, __unused NSError * _Nullable error);
         [invocation getArgument:&handler atIndex:4];
@@ -68,7 +71,7 @@
     confirmParams.returnURL = @"foo://bar";
 
     XCTestExpectation *e = [self expectationWithDescription:@""];
-    [paymentHandler confirmPayment:confirmParams withAuthenticationContext:self completion:^(STPPaymentHandlerActionStatus status, STPPaymentIntent * __unused pi, __unused NSError * _Nullable error) {
+    [paymentHandler confirmPayment:confirmParams withAuthenticationContext:self completion:^(STPPaymentHandlerActionStatus status, STPPaymentIntent * __unused _, __unused NSError * _Nullable error) {
         // ...shouldn't attempt to open the native URL (ie the alipay app)
         OCMReject([self.applicationMock openURL:[OCMArg any]
                                    options:[OCMArg any]

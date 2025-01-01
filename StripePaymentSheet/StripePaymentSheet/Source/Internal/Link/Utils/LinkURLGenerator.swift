@@ -24,6 +24,16 @@ struct LinkURLParams: Encodable {
         case link_payment_method
         case card_payment_method
     }
+    enum IntentMode: String, Encodable {
+        case payment
+        case setup
+    }
+    struct CardBrandChoiceInfo: Encodable {
+        var isMerchantEligibleForCBC: Bool
+        var stripePreferredNetworks: [String]
+        var supportedCobrandedNetworks: [String: Bool]
+    }
+    
     var path = "mobile_pay"
     var integrationType = "mobile"
     var paymentObject: PaymentObjectMode
@@ -35,22 +45,25 @@ struct LinkURLParams: Encodable {
     var paymentInfo: PaymentInfo?
     var experiments: [String: Bool]
     var flags: [String: Bool]
-    var loggerMetadata: [String: Bool]
+    var loggerMetadata: [String: String]
     var locale: String
+    var intentMode: IntentMode
+    var setupFutureUsage: Bool
+    var cardBrandChoice: CardBrandChoiceInfo?
 }
 
 class LinkURLGenerator {
-    static func linkParams(configuration: PaymentSheet.Configuration, intent: Intent) throws -> LinkURLParams {
+    static func linkParams(configuration: PaymentElementConfiguration, intent: Intent, elementsSession: STPElementsSession) throws -> LinkURLParams {
         guard let publishableKey = configuration.apiClient.publishableKey ?? STPAPIClient.shared.publishableKey else {
             throw LinkURLGeneratorError.noPublishableKey
         }
 
         // We only expect regionCode to be nil in rare situations with a buggy simulator. Use a default value we can detect server-side.
-        let customerCountryCode = intent.countryCode ?? configuration.defaultBillingDetails.address.country ?? Locale.current.regionCode ?? "US"
+        let customerCountryCode = configuration.defaultBillingDetails.address.country ?? Locale.current.stp_regionCode ?? elementsSession.countryCode(overrideCountry: configuration.userOverrideCountry) ?? "US"
 
-        let merchantCountryCode = intent.merchantCountryCode ?? customerCountryCode
+        let merchantCountryCode = elementsSession.merchantCountryCode ?? customerCountryCode
 
-        // Get email from the previously fetched account in the Link button, or the billing details, or the Customer object
+        // Get email from the previously fetched account in the Link button, or the billing details
         var customerEmail = LinkAccountContext.shared.account?.email
 
         if customerEmail == nil,
@@ -68,14 +81,38 @@ class LinkURLGenerator {
             return nil
         }()
 
-        return LinkURLParams(paymentObject: .link_payment_method,
+        var loggerMetadata: [String: String] = [:]
+        if let sessionID = AnalyticsHelper.shared.sessionID {
+            loggerMetadata = ["mobile_session_id": sessionID]
+        }
+
+        let paymentObjectType: LinkURLParams.PaymentObjectMode = elementsSession.linkPassthroughModeEnabled ? .card_payment_method : .link_payment_method
+
+        let intentMode: LinkURLParams.IntentMode = intent.isPaymentIntent ? .payment : .setup
+        
+        let cardBrandChoiceInfo: LinkURLParams.CardBrandChoiceInfo? = {
+            guard let cardBrandChoice = elementsSession.cardBrandChoice else { return nil }
+            return LinkURLParams.CardBrandChoiceInfo(isMerchantEligibleForCBC: cardBrandChoice.eligible,
+                                                     stripePreferredNetworks: cardBrandChoice.preferredNetworks,
+                                                     supportedCobrandedNetworks: cardBrandChoice.supportedCobrandedNetworks)
+        }()
+
+        let flags = elementsSession.linkFlags.merging(elementsSession.flags) { (current, _) in current }
+
+        return LinkURLParams(paymentObject: paymentObjectType,
                              publishableKey: publishableKey,
+                             stripeAccount: configuration.apiClient.stripeAccount,
                              paymentUserAgent: PaymentsSDKVariant.paymentUserAgent,
                              merchantInfo: merchantInfo,
                              customerInfo: customerInfo,
                              paymentInfo: paymentInfo,
-                             experiments: [:], flags: [:], loggerMetadata: [:],
-                             locale: Locale.current.toLanguageTag())
+                             experiments: [:],
+                             flags: flags,
+                             loggerMetadata: loggerMetadata,
+                             locale: Locale.current.toLanguageTag(),
+                             intentMode: intentMode,
+                             setupFutureUsage: intent.isSettingUp,
+                             cardBrandChoice: cardBrandChoiceInfo)
     }
 
     static func url(params: LinkURLParams) throws -> URL {
@@ -87,15 +124,18 @@ class LinkURLGenerator {
         return url
     }
 
-    static func url(configuration: PaymentSheet.Configuration, intent: Intent) async throws -> URL {
-        let params = try Self.linkParams(configuration: configuration, intent: intent)
+    static func url(configuration: PaymentSheet.Configuration, intent: Intent, elementsSession: STPElementsSession) throws -> URL {
+        let params = try Self.linkParams(configuration: configuration, intent: intent, elementsSession: elementsSession)
         return try url(params: params)
     }
 }
 
 extension LinkURLParams {
     func toURLEncodedBase64() throws -> String {
-        let encodedData = try JSONEncoder().encode(self)
+        let encoder = JSONEncoder()
+        // Sorting makes this a little easier to debug
+        encoder.outputFormatting = .sortedKeys
+        let encodedData = try encoder.encode(self)
         return encodedData.base64EncodedString()
     }
 }

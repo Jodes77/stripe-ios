@@ -10,11 +10,17 @@
 
 "Area" = "Područje";
 
+"BLIK code" = "BLIK kod";
+
 "BSB number" = "BSB broj";
+
+"Bank account •••• %@" = "Bankovni račun •••• %@";
 
 "Billing address is same as shipping" = "Adresa računa jednaka je adresi dostave";
 
 "Cancel" = "Otkaži";
+
+"Card brand" = "Robna marka kartice";
 
 "City" = "Grad";
 
@@ -37,6 +43,8 @@
 "District" = "Okrug";
 
 "Do Si" = "Do Si";
+
+"Do you want to close this form?" = "Želite li zatvoriti ovaj obrazac?";
 
 "Done" = "Gotovo";
 
@@ -76,7 +84,7 @@
 
 "Parish" = "Župa";
 
-"Phone" = "Telefon";
+"Phone number" = "Telefonski broj";
 
 "Postal code" = "Poštanski broj";
 
@@ -86,11 +94,15 @@
 
 "Remove" = "Ukloni";
 
-"Remove bank account" = "Ukloni bankovni račun";
+"Remove bank account?" = "Ukloniti bankovni račun?";
 
-"Remove bank account ending in %@" = "Ukloni bankovni račun koji završava na %@";
+"Remove card" = "Ukloni karticu";
 
 "Search" = "Pretraži";
+
+"Select card brand (optional)" = "Odaberite marku kartice (nije obavezno)";
+
+"Sort code" = "Bankovni kod za razvrstavanje (UK)";
 
 "State" = "Država";
 
@@ -104,6 +116,8 @@
 
 "The account number you entered is incomplete." = "Uneseni broj računa je nepotpun.";
 
+"The sort code you entered is invalid." = "Bankovni kod za razvrstavanje koji ste unijeli nije važeći.";
+
 "Town or city" = "Gradić ili grad";
 
 "UPI ID" = "UPI ID";
@@ -112,9 +126,15 @@
 
 "Use rotor to access links" = "Upotrijebite rotor za pristup poveznicama";
 
+"Your BLIK code is incomplete." = "Vaš BLIK kod je nepotpun.";
+
+"Your BLIK code is invalid." = "Vaš BLIK kod je nevažeći.";
+
 "Your ZIP is incomplete." = "Vaš ZIP broj nije kompletan.";
 
 "Your email is invalid." = "Vaš e-mail je neispravan.";
+
+"Your payment information will not be saved." = "Vaši podaci o plaćanju neće biti spremljeni.";
 
 "Your postal code is incomplete." = "Vaš poštanski broj nije kompletan.";
 

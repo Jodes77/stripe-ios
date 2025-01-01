@@ -18,6 +18,7 @@ protocol InstitutionSearchBarDelegate: AnyObject {
 
 final class InstitutionSearchBar: UIView {
 
+    private let theme: FinancialConnectionsTheme
     weak var delegate: InstitutionSearchBarDelegate?
     var text: String {
         get {
@@ -33,7 +34,8 @@ final class InstitutionSearchBar: UIView {
 
     private lazy var textField: UITextField = {
         let textField = IncreasedHitTestTextField()
-        textField.textColor = .textPrimary
+        textField.textColor = .textDefault
+        textField.tintColor = textField.textColor // caret color
         textField.font = FinancialConnectionsFont.label(.large).uiFont
         // this removes the `searchTextField` background color.
         // for an unknown reason, setting the `backgroundColor` to
@@ -46,11 +48,18 @@ final class InstitutionSearchBar: UIView {
                 "The placeholder message that appears in a search bar. The placeholder appears before a user enters a search term. It instructs user that this is a search bar."
             ),
             attributes: [
-                .foregroundColor: UIColor.textSecondary,
+                .foregroundColor: UIColor.textSubdued,
                 .font: FinancialConnectionsFont.label(.large).uiFont,
             ]
         )
         textField.returnKeyType = .search
+        // fixes a 'bug' where if a user types a keyword, and autocorrect
+        // wants to correct it, pressing "search" button will choose
+        // the autocorrected word even though the intent was to use the
+        // typed-in word
+        //
+        // also, bank names are not always friendly to autocorrect suggestions
+        textField.autocorrectionType = .no
         textField.delegate = self
         textField.addTarget(
             self,
@@ -58,13 +67,17 @@ final class InstitutionSearchBar: UIView {
             for: .editingChanged
         )
         textField.accessibilityIdentifier = "search_bar_text_field"
+        textField.translatesAutoresizingMaskIntoConstraints = false
+        NSLayoutConstraint.activate([
+            textField.heightAnchor.constraint(greaterThanOrEqualToConstant: 24)
+        ])
         return textField
     }()
     private lazy var textFieldClearButton: UIButton = {
         let imageView = UIImageView()
         let textFieldClearButton = TextFieldClearButton()
         let cancelImage = Image.cancel_circle.makeImage()
-            .withTintColor(.textDisabled)
+            .withTintColor(.textSubdued)
         textFieldClearButton.setImage(cancelImage, for: .normal)
         textFieldClearButton.addTarget(
             self,
@@ -81,18 +94,19 @@ final class InstitutionSearchBar: UIView {
     private lazy var searchIconView: UIView = {
         let searchIconImageView = UIImageView()
         searchIconImageView.image = Image.search.makeImage()
-            .withTintColor(.textPrimary)
+            .withTintColor(.iconDefault)
         searchIconImageView.translatesAutoresizingMaskIntoConstraints = false
         NSLayoutConstraint.activate([
-            searchIconImageView.widthAnchor.constraint(equalToConstant: 16),
-            searchIconImageView.heightAnchor.constraint(equalToConstant: 16),
+            searchIconImageView.widthAnchor.constraint(equalToConstant: 20),
+            searchIconImageView.heightAnchor.constraint(equalToConstant: 20),
         ])
         return searchIconImageView
     }()
 
-    init() {
+    init(theme: FinancialConnectionsTheme) {
+        self.theme = theme
         super.init(frame: .zero)
-        layer.cornerRadius = 8
+        layer.cornerRadius = 12
 
         let horizontalStackView = UIStackView(
             arrangedSubviews: [
@@ -103,7 +117,7 @@ final class InstitutionSearchBar: UIView {
         )
         horizontalStackView.axis = .horizontal
         horizontalStackView.alignment = .center
-        horizontalStackView.spacing = 10
+        horizontalStackView.spacing = 12
         horizontalStackView.isLayoutMarginsRelativeArrangement = true
         horizontalStackView.directionalLayoutMargins = NSDirectionalEdgeInsets(
             top: 16,
@@ -121,6 +135,10 @@ final class InstitutionSearchBar: UIView {
         fatalError("init(coder:) has not been implemented")
     }
 
+    @discardableResult override func becomeFirstResponder() -> Bool {
+        return textField.becomeFirstResponder()
+    }
+
     @discardableResult override func resignFirstResponder() -> Bool {
         return textField.resignFirstResponder()
     }
@@ -131,6 +149,7 @@ final class InstitutionSearchBar: UIView {
     }
 
     @objc private func didSelectClearButton() {
+        FeedbackGeneratorAdapter.buttonTapped()
         text = ""
     }
 
@@ -141,34 +160,25 @@ final class InstitutionSearchBar: UIView {
     private func highlightBorder(_ shouldHighlightBorder: Bool) {
         let searchBarBorderColor: UIColor
         let searchBarBorderWidth: CGFloat
+        let shadowOpacity: Float
         if shouldHighlightBorder {
-            searchBarBorderColor = .textBrand
+            searchBarBorderColor = theme.textFieldFocusedColor
             searchBarBorderWidth = 2
+            shadowOpacity = 0.1
         } else {
-            searchBarBorderColor = .borderNeutral
+            searchBarBorderColor = .borderDefault
             searchBarBorderWidth = 1
+            shadowOpacity = 0
         }
         layer.borderColor = searchBarBorderColor.cgColor
         layer.borderWidth = searchBarBorderWidth
-    }
-
-    func updateSearchingIndicator(_ isSearching: Bool) {
-        guard isSearching else {
-            searchIconView.layer.removeAnimation(forKey: "pulseAnimation")
-            return
-        }
-        guard searchIconView.layer.animation(forKey: "pulseAnimation") == nil else {
-            return
-        }
-
-        let opacityAnimation = CABasicAnimation(keyPath: "opacity")
-        opacityAnimation.fromValue = 0.6
-        opacityAnimation.toValue = 0.3
-        opacityAnimation.repeatCount = .infinity
-        opacityAnimation.timingFunction = CAMediaTimingFunction(name: CAMediaTimingFunctionName.easeInEaseOut)
-        opacityAnimation.duration = 0.3
-        opacityAnimation.autoreverses = true
-        searchIconView.layer.add(opacityAnimation, forKey: "pulseAnimation")
+        layer.shadowOpacity = shadowOpacity
+        layer.shadowColor = UIColor.black.cgColor
+        layer.shadowRadius = 2 / UIScreen.main.nativeScale
+        layer.shadowOffset = CGSize(
+            width: 0,
+            height: 1 / UIScreen.main.nativeScale
+        )
     }
 }
 
@@ -206,30 +216,46 @@ import SwiftUI
 private struct InstitutionSearchBarUIViewRepresentable: UIViewRepresentable {
 
     let text: String
+    var isSelected: Bool = false
+    let theme: FinancialConnectionsTheme
 
     func makeUIView(context: Context) -> InstitutionSearchBar {
-        InstitutionSearchBar()
+        InstitutionSearchBar(theme: theme)
     }
 
     func updateUIView(_ searchBar: InstitutionSearchBar, context: Context) {
         searchBar.text = text
+
+        if isSelected {
+            _ = searchBar.becomeFirstResponder()
+        }
     }
 }
 
 struct InstitutionSearchBar_Previews: PreviewProvider {
     static var previews: some View {
         VStack(spacing: 20) {
-            InstitutionSearchBarUIViewRepresentable(text: "")
+            InstitutionSearchBarUIViewRepresentable(text: "", theme: .light)
                 .frame(width: 327)
                 .frame(height: 56)
 
-            InstitutionSearchBarUIViewRepresentable(text: "Chase")
+            InstitutionSearchBarUIViewRepresentable(text: "Chase", theme: .light)
                 .frame(width: 327)
                 .frame(height: 56)
 
             Spacer()
         }
         .frame(maxWidth: .infinity)
+
+        InstitutionSearchBarUIViewRepresentable(text: "Chase", isSelected: true, theme: .light)
+            .frame(width: 327)
+            .frame(height: 56)
+            .previewDisplayName("Selected - Light theme")
+
+        InstitutionSearchBarUIViewRepresentable(text: "Chase", isSelected: true, theme: .linkLight)
+            .frame(width: 327)
+            .frame(height: 56)
+            .previewDisplayName("Selected - Link Light theme")
     }
 }
 

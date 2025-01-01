@@ -15,55 +15,57 @@ final class AccountNumberRetrievalErrorView: UIView {
 
     init(
         institution: FinancialConnectionsInstitution,
+        theme: FinancialConnectionsTheme,
         didSelectAnotherBank: @escaping () -> Void,
         didSelectEnterBankDetailsManually: (() -> Void)?  // if nil, don't show button
     ) {
         super.init(frame: .zero)
-        let reusableInformationView = ReusableInformationView(
-            iconType: .view(
-                {
-                    let institutionIconView = InstitutionIconView(
-                        size: .large,
-                        showWarning: true
-                    )
+        let paneLayoutView = PaneLayoutView(
+            contentView: PaneLayoutView.createContentView(
+                iconView: {
+                    let institutionIconView = InstitutionIconView()
                     institutionIconView.setImageUrl(institution.icon?.default)
                     return institutionIconView
-                }()
+                }(),
+                title: STPLocalizedString(
+                    "Your account number couldn’t be accessed at this time",
+                    "The title of a screen that shows an error. The error appears after we failed to access users bank account."
+                ),
+                subtitle: {
+                    let isManualEntryEnabled = didSelectEnterBankDetailsManually != nil
+                    if isManualEntryEnabled {
+                        return STPLocalizedString(
+                            "Please enter your bank details manually or select another bank.",
+                            "The subtitle/description of a screen that shows an error. The error appears after we failed to access users bank account. Here we instruct the user to enter their bank details manually or to try selecting another bank."
+                        )
+                    } else {
+                        return STPLocalizedString(
+                            "Please select another bank.",
+                            "The subtitle/description of a screen that shows an error. The error appears after we failed to access users bank account. Here we instruct the user to try selecting another bank."
+                        )
+                    }
+                }(),
+                contentView: nil
             ),
-            title: STPLocalizedString(
-                "Your account number couldn’t be accessed at this time",
-                "The title of a screen that shows an error. The error appears after we failed to access users bank account."
-            ),
-            subtitle: {
-                let isManualEntryEnabled = didSelectEnterBankDetailsManually != nil
-                if isManualEntryEnabled {
-                    return STPLocalizedString(
-                        "Please enter your bank details manually or select another bank.",
-                        "The subtitle/description of a screen that shows an error. The error appears after we failed to access users bank account. Here we instruct the user to enter their bank details manually or to try selecting another bank."
-                    )
-                } else {
-                    return STPLocalizedString(
-                        "Please select another bank.",
-                        "The subtitle/description of a screen that shows an error. The error appears after we failed to access users bank account. Here we instruct the user to try selecting another bank."
-                    )
-                }
-            }(),
-            primaryButtonConfiguration: ReusableInformationView.ButtonConfiguration(
-                title: String.Localized.select_another_bank,
-                action: didSelectAnotherBank
-            ),
-            secondaryButtonConfiguration: {
-                if let didSelectEnterBankDetailsManually = didSelectEnterBankDetailsManually {
-                    return ReusableInformationView.ButtonConfiguration(
-                        title: String.Localized.enter_bank_details_manually,
-                        action: didSelectEnterBankDetailsManually
-                    )
-                } else {
-                    return nil
-                }
-            }()
+            footerView: PaneLayoutView.createFooterView(
+                primaryButtonConfiguration: PaneLayoutView.ButtonConfiguration(
+                    title: String.Localized.select_another_bank,
+                    action: didSelectAnotherBank
+                ),
+                secondaryButtonConfiguration: {
+                    if let didSelectEnterBankDetailsManually = didSelectEnterBankDetailsManually {
+                        return PaneLayoutView.ButtonConfiguration(
+                            title: String.Localized.enter_bank_details_manually,
+                            action: didSelectEnterBankDetailsManually
+                        )
+                    } else {
+                        return nil
+                    }
+                }(),
+                theme: theme
+            ).footerView
         )
-        addAndPinSubview(reusableInformationView)
+        paneLayoutView.addTo(view: self)
     }
 
     required init?(coder: NSCoder) {
@@ -78,6 +80,7 @@ import SwiftUI
 private struct AccountNumberRetrievalErrorViewUIViewRepresentable: UIViewRepresentable {
 
     let institutionName: String
+    let theme: FinancialConnectionsTheme
     let didSelectEnterBankDetailsManually: (() -> Void)?
 
     func makeUIView(context: Context) -> AccountNumberRetrievalErrorView {
@@ -89,6 +92,7 @@ private struct AccountNumberRetrievalErrorViewUIViewRepresentable: UIViewReprese
                 icon: nil,
                 logo: nil
             ),
+            theme: theme,
             didSelectAnotherBank: {},
             didSelectEnterBankDetailsManually: didSelectEnterBankDetailsManually
         )
@@ -101,11 +105,13 @@ struct AccountNumberRetrievalErrorView_Previews: PreviewProvider {
     static var previews: some View {
         AccountNumberRetrievalErrorViewUIViewRepresentable(
             institutionName: "Chase",
+            theme: .light,
             didSelectEnterBankDetailsManually: {}
         )
 
         AccountNumberRetrievalErrorViewUIViewRepresentable(
             institutionName: "Bank of America",
+            theme: .light,
             didSelectEnterBankDetailsManually: nil
         )
     }

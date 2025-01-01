@@ -16,6 +16,7 @@ final class LinkAccountPickerNewAccountRowView: UIView {
     init(
         title: String,
         imageUrl: String?,
+        theme: FinancialConnectionsTheme,
         didSelect: @escaping () -> Void
     ) {
         self.didSelect = didSelect
@@ -24,7 +25,7 @@ final class LinkAccountPickerNewAccountRowView: UIView {
         let horizontalStackView = CreateHorizontalStackView()
         if let imageUrl = imageUrl {
             horizontalStackView.addArrangedSubview(
-                CreateIconView(imageUrl: imageUrl)
+                CreateIconView(imageUrl: imageUrl, theme: theme)
             )
         }
         horizontalStackView.addArrangedSubview(
@@ -37,8 +38,8 @@ final class LinkAccountPickerNewAccountRowView: UIView {
         let tapGestureRecognizer = UITapGestureRecognizer(target: self, action: #selector(didTapView))
         addGestureRecognizer(tapGestureRecognizer)
 
-        layer.cornerRadius = 8
-        layer.borderColor = UIColor.borderNeutral.cgColor
+        layer.cornerRadius = 12
+        layer.borderColor = UIColor.borderDefault.cgColor
         layer.borderWidth = 1
     }
 
@@ -51,32 +52,18 @@ final class LinkAccountPickerNewAccountRowView: UIView {
     }
 }
 
-private func CreateIconView(imageUrl: String) -> UIView {
-    let diameter: CGFloat = 24
-    let iconImageView = UIImageView()
-    iconImageView.contentMode = .scaleAspectFit
-    iconImageView.setImage(with: imageUrl)
-    let paddedView = UIStackView(arrangedSubviews: [iconImageView])
-    paddedView.backgroundColor = .textBrand.withAlphaComponent(0.1)
-    paddedView.layer.cornerRadius = 6
-    paddedView.isLayoutMarginsRelativeArrangement = true
-    paddedView.directionalLayoutMargins = NSDirectionalEdgeInsets(
-        top: 6,
-        leading: 6,
-        bottom: 6,
-        trailing: 6
+private func CreateIconView(imageUrl: String, theme: FinancialConnectionsTheme) -> UIView {
+    RoundedIconView(
+        image: .imageUrl(imageUrl, placeholder: Image.add),
+        style: .rounded,
+        theme: theme
     )
-    NSLayoutConstraint.activate([
-        paddedView.widthAnchor.constraint(equalToConstant: diameter),
-        paddedView.heightAnchor.constraint(equalToConstant: diameter),
-    ])
-    return paddedView
 }
 
 private func CreateTitleLabelView(title: String) -> UIView {
     let titleLabel = AttributedLabel(
         font: .label(.largeEmphasized),
-        textColor: .textBrand
+        textColor: .textDefault
     )
     titleLabel.text = title
     titleLabel.lineBreakMode = .byCharWrapping
@@ -90,10 +77,10 @@ private func CreateHorizontalStackView() -> UIStackView {
     horizontalStackView.alignment = .center
     horizontalStackView.isLayoutMarginsRelativeArrangement = true
     horizontalStackView.directionalLayoutMargins = NSDirectionalEdgeInsets(
-        top: 12,
-        leading: 12,
-        bottom: 12,
-        trailing: 12
+        top: 16,
+        leading: 16,
+        bottom: 16,
+        trailing: 16
     )
     return horizontalStackView
 }
@@ -106,11 +93,13 @@ private struct LinkAccountPickerNewAccountRowViewUIViewRepresentable: UIViewRepr
 
     let title: String
     let imageUrl: String?
+    let theme: FinancialConnectionsTheme
 
     func makeUIView(context: Context) -> LinkAccountPickerNewAccountRowView {
         return LinkAccountPickerNewAccountRowView(
             title: title,
             imageUrl: imageUrl,
+            theme: theme,
             didSelect: {}
         )
     }
@@ -125,15 +114,24 @@ struct LinkAccountPickerNewAccountRowView_Previews: PreviewProvider {
                 VStack(spacing: 10) {
                     LinkAccountPickerNewAccountRowViewUIViewRepresentable(
                         title: "New bank account",
-                        imageUrl: "https://b.stripecdn.com/connections-statics-srv/assets/SailIcon--add-purple-3x.png"
+                        imageUrl: "https://b.stripecdn.com/connections-statics-srv/assets/SailIcon--add-purple-3x.png",
+                        theme: .light
                     )
-                        .frame(height: 48)
+                        .frame(height: 88)
 
                     LinkAccountPickerNewAccountRowViewUIViewRepresentable(
                         title: "New bank account",
-                        imageUrl: nil
+                        imageUrl: "https://b.stripecdn.com/connections-statics-srv/assets/SailIcon--add-purple-3x.png",
+                        theme: .linkLight
                     )
-                        .frame(height: 48)
+                        .frame(height: 88)
+
+                    LinkAccountPickerNewAccountRowViewUIViewRepresentable(
+                        title: "New bank account",
+                        imageUrl: nil,
+                        theme: .light
+                    )
+                        .frame(height: 88)
                 }
                 .padding()
             }

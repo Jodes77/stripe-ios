@@ -17,6 +17,26 @@ import XCTest
 @testable@_spi(STP) import StripePaymentSheet
 
 class STPAPIClientStubbedTest: APIStubbedTestCase {
+    func testCreatePaymentMethodWithAdditionalPaymentUserAgentValues() {
+        let sut = stubbedAPIClient()
+        stub { urlRequest in
+            guard let queryItems = urlRequest.queryItems else {
+                return false
+            }
+            XCTAssertTrue(queryItems.contains(where: { item in
+                // The additional payment user agent values "foo" and "bar" should be in the payment_user_agent field
+                item.name == "payment_user_agent" && item.value!.hasSuffix("%3B%20foo%3B%20bar")
+            }))
+            return true
+        } response: { _ in
+            return .init()
+        }
+        let e = expectation(description: "")
+        sut.createPaymentMethod(with: ._testValidCardValue(), additionalPaymentUserAgentValues: ["foo", "bar"]) { _, _ in
+            e.fulfill()
+        }
+        waitForExpectations(timeout: 10)
+    }
 
     func testSetupIntent_LinkAccountSessionForUSBankAccount() {
         let sut = stubbedAPIClient()
@@ -73,7 +93,8 @@ class STPAPIClientStubbedTest: APIStubbedTestCase {
             clientSecret: "si_client_secret_123",
             paymentMethodType: .USBankAccount,
             customerName: "Test Tester",
-            customerEmailAddress: "test@example.com"
+            customerEmailAddress: "test@example.com",
+            linkMode: nil
         ) { intent, _ in
             guard let intent = intent else {
                 XCTFail("Intent was null")
@@ -143,7 +164,8 @@ class STPAPIClientStubbedTest: APIStubbedTestCase {
             clientSecret: "si_client_secret_123",
             paymentMethodType: .USBankAccount,
             customerName: "Test Tester",
-            customerEmailAddress: "test@example.com"
+            customerEmailAddress: "test@example.com",
+            linkMode: nil
         ) { intent, _ in
             guard let intent = intent else {
                 XCTFail("Intent was null")

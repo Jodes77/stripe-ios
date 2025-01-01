@@ -1,4 +1,4 @@
-"AU BECS Direct Debit" = "AU BECS -suoraveloitus";
+"AU Direct Debit" = "AU-suoraveloitus";
 
 "Affirm" = "Affirm";
 
@@ -8,9 +8,9 @@
 
 "BLIK" = "BLIK";
 
-"Bancontact" = "Bancontact";
+"Bacs Direct Debit" = "Bacs-suoraveloitus";
 
-"Bank" = "Pankki";
+"Bancontact" = "Bancontact";
 
 "Boleto" = "Boleto";
 
@@ -28,6 +28,8 @@
 
 "Klarna" = "Klarna";
 
+"Konbini" = "Konbini";
+
 "Link" = "Linkki";
 
 "NetBanking" = "NetBanking";
@@ -42,11 +44,13 @@
 
 "Sofort" = "Sofort";
 
+"Swish" = "Swish";
+
 "Timed out authenticating your payment method -- try again" = "Maksutapasi todennus aikakatkaistiin – yritä uudelleen.";
 
 "UPI" = "UPI";
 
-"US Bank Account" = "Yhdysvaltalainen pankkitili";
+"US bank account" = "Yhdysvaltalainen pankkitili";
 
 "Unknown" = "Tuntematon";
 

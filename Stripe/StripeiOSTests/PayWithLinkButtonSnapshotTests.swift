@@ -16,15 +16,10 @@ import UIKit
 @testable@_spi(STP) import StripePaymentSheet
 @testable@_spi(STP) import StripePaymentsUI
 
-class PayWithLinkButtonSnapshotTests: FBSnapshotTestCase {
+class PayWithLinkButtonSnapshotTests: STPSnapshotTestCase {
 
     private let emailAddress = "customer@example.com"
     private let longEmailAddress = "long.customer.name@example.com"
-
-    override func setUp() {
-        super.setUp()
-        //        recordMode = true
-    }
 
     func testDefault() {
         let sut = makeSUT()
@@ -69,14 +64,15 @@ class PayWithLinkButtonSnapshotTests: FBSnapshotTestCase {
     }
 
     func testRegistered_withLongEmailAddress() {
-        let sut = PayWithLinkButton()
+        let sut = makeSUT()
         sut.linkAccount = makeAccountStub(email: longEmailAddress, isRegistered: true)
         verify(sut)
     }
 
-    func testRegistered_withCardInfo() {
-        let sut = PayWithLinkButton()
-        sut.linkAccount = makeAccountStub(email: emailAddress, isRegistered: true, lastPM: .init(last4: "3155", brand: .visa))
+    func testAddThenRemoveAccount() {
+        let sut = makeSUT()
+        sut.linkAccount = makeAccountStub(email: longEmailAddress, isRegistered: true)
+        sut.linkAccount = nil
         verify(sut)
     }
 
@@ -96,19 +92,17 @@ extension PayWithLinkButtonSnapshotTests {
 
     fileprivate struct LinkAccountStub: PaymentSheetLinkAccountInfoProtocol {
         let email: String
-        let redactedPhoneNumber: String?
-        let lastPM: LinkPMDisplayDetails?
         let isRegistered: Bool
-        let isLoggedIn: Bool
+        var redactedPhoneNumber: String?
+        var isLoggedIn: Bool
     }
 
-    fileprivate func makeAccountStub(email: String, isRegistered: Bool, lastPM: LinkPMDisplayDetails? = nil) -> LinkAccountStub {
+    fileprivate func makeAccountStub(email: String, isRegistered: Bool) -> LinkAccountStub {
         return LinkAccountStub(
             email: email,
-            redactedPhoneNumber: "+1********55",
-            lastPM: lastPM,
             isRegistered: isRegistered,
-            isLoggedIn: false
+            redactedPhoneNumber: "+1********55",
+            isLoggedIn: true
         )
     }
 
